@@ -1,72 +1,151 @@
 # P2 - Distribuirana koordinacija (Tim T2)
 
-Ovaj repozitorij sadrži implementaciju distribuiranog sustava s 5 čvorova koji demonstriraju:
+Ovaj repozitorij sadrži implementaciju distribuiranog sustava na AWS platformi koja demonstrira ključne algoritme koordinacije. Projekt koristi **Terraform** za _Infrastructure as Code_ (IaC) i automatsko postavljanje okruženja.
 
-1. Lamportove satove (logičko vrijeme).
-2. Ricart-Agrawala algoritam (međusobno isključivanje).
-3. Bully algoritam (izbor vođe).
+Implementirani koncepti:
+
+1. **Lamportovi satovi**: Logičko mjerenje vremena.
+    
+2. **Ricart-Agrawala algoritam**: Međusobno isključivanje (Mutex) za pristup kritičnoj sekciji.
+    
+3. **Bully algoritam**: Izbor vođe (Leader Election) i tolerancija na kvarove.
+    
 
 ## Struktura tima
 
-- Vedran Marić: Voditelj, integracija.
-- Anđela Marinović: Infrastruktura (AWS).
-- Leo Petrović: Algoritmi (Mutex/Lamport).
-- Nikola Pehar: Leader Election, mjerenja.
+- **Vedran Marić**: Voditelj, integracija.
+    
+- **Anđela Marinović**: Infrastruktura i komunikacija (AWS/Terraform).
+    
+- **Leo Petrović**: Algoritmi (Mutex/Lamport).
+    
+- **Nikola Pehar**: Leader Election i mjerenja.
+    
 
 ## Preduvjeti
 
-- AWS Academy Learner Lab pristup.
-- Terraform instaliran.
-- Python 3 + boto3.
+- **AWS Academy Learner Lab** pristup (aktiviran _Lab_).
+    
+- **Terraform** instaliran lokalno.
+    
+- **AWS CLI** konfiguriran s `aws_access_key_id` i `aws_secret_access_key` iz _AWS Details_ panela.
+    
 
-## Upute za pokretanje
+## Arhitektura i Automatizacija
 
-### 1. Podizanje infrastrukture (Anđela)
+Sustav se sastoji od 5 EC2 instanci unutar VPC-a.
 
-1. Pozicionirajte se u folder s main.tf.
-2. Pokrenite:  
-   terraform init  
-   terraform apply
-3. Zapišite javne i privatne IP adrese koje Terraform ispiše (ili pogledajte u AWS konzoli).
+Cijeli deploy proces je automatiziran putem main.tf datoteke koja:
 
-### 2. Konfiguracija mreže (Svi)
+1. Kreira mrežnu infrastrukturu (VPC, Subnet, Security Groups).
+    
+2. Postavlja IAM role za pisanje u **CloudWatch**.
+    
+3. Kreira EC2 instance s fiksiranim privatnim IP adresama.
+    
+4. Putem `user_data` skripte automatski:
+    
+    - Instalira Python i biblioteke.
+        
+    - Generira `peers.json`.
+        
+    - Pokreće `node.py` u pozadini u **automatskom simulacijskom modu**.
+        
 
-Kreirajte datoteku peers.json. VAŽNO: Koristite privatne IP adrese ako pokrećete na AWS-u unutar istog VPC-a.
+## Upute za pokretanje (AWS)
 
-Primjer peers.json:
+### 1. Podizanje infrastrukture (Deploy)
 
-{  
-    "1": {"ip": "172.31.x.1", "port": 5000},  
-    "2": {"ip": "172.31.x.2", "port": 5000},  
-    "3": {"ip": "172.31.x.3", "port": 5000},  
-    "4": {"ip": "172.31.x.4", "port": 5000},  
-    "5": {"ip": "172.31.x.5", "port": 5000}  
-}
+Pozicionirajte se u korijenski direktorij repozitorija i pokrenite:
 
-### 3. Pokretanje čvorova
+Bash
 
-Spojite se SSH-om na svaku instancu, prebacite node.py i peers.json te pokrenite:
+```
+terraform init
+terraform apply -auto-approve
+```
 
-Na instanci 1:
+Pričekajte 2-3 minute da se instance podignu i da inicijalizacijske skripte završe instalaciju. Nije potrebna nikakva ručna intervencija.
 
-python3 node.py --id 1 --peers peers.json
+### 2. Monitoring (CloudWatch)
 
-Na instanci 2:
+Prema specifikaciji projekta, svi logovi se šalju na AWS CloudWatch.
 
-python3 node.py --id 2 --peers peers.json
+1. Otvorite AWS Konzolu -> **CloudWatch**.
+    
+2. U lijevom izborniku odaberite **Logs** -> **Log groups**.
+    
+3. Otvorite grupu: `/Distributed_System_Logs`.
+    
+4. Vidjet ćete _Log streamove_ za svaki čvor (`Node_1`, `Node_2`, ...).
+    
+5. Klikom na stream možete pratiti:
+    
+    - Promjene Lamportovog sata.
+        
+    - Zahtjeve za kritičnu sekciju (ENTER/EXIT).
+        
+    - Promjene vođe (LEADER_UPDATE).
+        
 
-... i tako dalje za svih 5.
+### 3. Demo scenariji i testiranje
 
-Također možete pokrenuti `python run_local.py` komandu unutar `src/` direktorija da pokrenete svih N čvorova (onoliko koliko ih je definirano u `peers.json`) umjesto da svaki pokrećete jedan po jedan. U tom slučaju, da biste poslali komandu nekom čvoru, morate dodati i ID čvora (npr. umjesto `req`, pišite `req 1` da pošaljete čvoru 1).
+Sustav je konfiguriran da automatski simulira rad (slanje poruka i zahtjeva). Za ručno testiranje specifičnih scenarija (npr. rušenje vođe):
 
-### 4. Monitoring
+1. Spojite se na instancu putem SSH (IP adrese su ispisane u Terraform outputu):
+    
+    Bash
+    
+    ```
+    ssh -i vockey.pem ec2-user@<JAVNA-IP-ADRESA>
+    ```
+    
+2. Provjerite status procesa:
+    
+    Bash
+    
+    ```
+    ps aux | grep node.py
+    ```
+    
+3. **Simulacija kvara:** Ubijte proces trenutnog vođe:
+    
+    Bash
+    
+    ```
+    kill <PID>
+    ```
+    
+1. Pratite CloudWatch logove ostalih čvorova – trebali bi detektirati kvar i izabrati novog vođu.
+    
 
-Svaki čvor spašava strukturirane logove u direktoriju `logs/`.
+## Lokalno pokretanje (Development)
 
-Koristite `python log_viewer.py --files ./logs/* --sort time --follow --interval 0.2` komandu unutar `src/` direktorija kako biste vidjeli zajednički formatirani ispis svih čvorova.
+Za potrebe razvoja i testiranja bez AWS-a:
+
+1. Uredite `node.py` i postavite `USE_CLOUDWATCH = False` (ili koristite default).
+    
+2. Kreirajte lokalni `peers.json` (localhost portovi 5001-5005).
+    
+3. Pokrenite čvorove u zasebnim terminalima:
+    
+    Bash
+    
+    ```
+    python3 node.py --id 1 --peers peers.json
+    python3 node.py --id 2 --peers peers.json
+    # ...
+    ```
+    
+4. U lokalnom načinu rada, čvorovi prihvaćaju komande putem tipkovnice (`req`, `elect`, `status`).
+    
 
 ## Čišćenje (Cleanup)
 
-Nakon dema obavezno pokrenuti:
+Kako ne bi trošili AWS kredit, nakon završetka rada obavezno uklonite resurse:
 
-terraform destroy
+Bash
+
+```
+terraform destroy -auto-approve
+```
