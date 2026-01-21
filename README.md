@@ -18,14 +18,14 @@ Ovaj repozitorij sadrži **kompletan distribuirani sustav** implementiran na AWS
 
 ### Ispunjeni minimalni zahtjevi:
 
-[x] **5 čvorova** - Svaki čvor s jedinstvenim identitetom  
-[x] **Lamportov sat** - Ispravna implementacija `max + 1` pravila  
-[x] **Međusobno isključivanje** - Dokazano u CloudWatch logovima  
-[x] **Izbor vođe** - Automatski oporavak od kvara vođe (heartbeat + timeout)  
-[x] **Mjerenja performansi** - Broj poruka i vrijeme čekanja  
-[x] **CloudWatch** - Strukturirani logovi i alarmi  
-[x] **IAM** - Least-privilege princip (LabInstanceProfile)  
-[x] **Tagiranje** - `Project=P2` i `Team=T2`
+- [x] **5 čvorova** - Svaki čvor s jedinstvenim identitetom
+- [x] **Lamportov sat** - Ispravna implementacija `max + 1` pravila
+- [x] **Međusobno isključivanje** - Dokazano u CloudWatch logovima
+- [x] **Izbor vođe** - Automatski oporavak od kvara vođe (heartbeat + timeout)
+- [x] **Mjerenja performansi** - Broj poruka i vrijeme čekanja
+- [x] **CloudWatch** - Strukturirani logovi i alarmi
+- [x] **IAM** - Least-privilege princip (LabInstanceProfile)
+- [x] **Tagiranje** - `Project=P2` i `Team=T2`
 
 ---
 
@@ -388,24 +388,24 @@ terraform destroy -auto-approve
 
 ### Sigurnost
 
-[x] **IAM Least Privilege** - Koristi se postojeći `LabInstanceProfile` s minimalnim potrebnim dozvolama  
-[x] **Security Groups** - Ograničena komunikacija samo na potrebne portove  
-[x] **Tajne** - Nisu pohranjene u kodu; koriste se environment varijable  
-[x] **SSH** - Pristup samo s privatnim ključem (`labsuser.pem`)
+- [x] **IAM Least Privilege** - Koristi se postojeći `LabInstanceProfile` s minimalnim potrebnim dozvolama
+- [x] **Security Groups** - Ograničena komunikacija samo na potrebne portove
+- [x] **Tajne** - Nisu pohranjene u kodu; koriste se environment varijable
+- [x] **SSH** - Pristup samo s privatnim ključem (`labsuser.pem`)
 
 ### Toleriranje kvarova
 
-[x] **Failure Detection** - TCP timeout + retry mehanizam  
-[x] **Dead Node Tracking** - Thread-safe praćenje neaktivnih čvorova  
-[x] **Leader Recovery** - Automatski heartbeat i re-election  
-[x] **Mutex Resilience** - Smanjeni quorum ako čvor nije dostupan
+- [x] **Failure Detection** - TCP timeout + retry mehanizam
+- [x] **Dead Node Tracking** - Thread-safe praćenje neaktivnih čvorova
+- [x] **Leader Recovery** - Automatski heartbeat i re-election
+- [x] **Mutex Resilience** - Smanjeni quorum ako čvor nije dostupan
 
 ### Reproducibilnost
 
-[x] **IaC** - Terraform konfiguracija s verzioniranim stanjem  
-[x] **Automatizacija** - Potpuno automatski deploy od nule do pokretanja  
-[x] **Dokumentacija** - Jasne upute za setup, test i teardown  
-[x] **Git** - Verzioniranje koda i infrastrukture
+- [x] **IaC** - Terraform konfiguracija s verzioniranim stanjem
+- [x] **Automatizacija** - Potpuno automatski deploy od nule do pokretanja
+- [x] **Dokumentacija** - Jasne upute za setup, test i teardown
+- [x] **Git** - Verzioniranje koda i infrastrukture
 
 ---
 
