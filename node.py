@@ -2,7 +2,6 @@
 
 import argparse
 import json
-import logging
 import os
 import random
 import signal
@@ -14,10 +13,8 @@ import time
 from enum import Enum
 from typing import Any, Dict, List, Optional, Tuple
 
-import boto3
+from cloudwatch_logger import CloudWatchLogger
 
-USE_CLOUDWATCH = os.environ.get("USE_CLOUDWATCH", "False").lower() == "true"
-CLOUDWATCH_GROUP = "Distributed_System_Logs"
 HEARTBEAT_INTERVAL = 2.0
 ELECTION_TIMEOUT = 5.0
 MUTEX_REPLY_TIMEOUT = 5.0
@@ -74,35 +71,13 @@ class DistributedNode:
         self.server_socket.bind(('', self.port))
         self.server_socket.listen(5)
 
-        self.cw_client = None
-        self.cw_sequence_token: Optional[str] = None
-        self.logger: logging.Logger = self.setup_logging()
-
-        if USE_CLOUDWATCH:
-            try:
-                region = os.environ.get('AWS_REGION', 'us-east-1')
-                self.cw_client = boto3.client('logs', region_name=region)
-
-                try:
-                    self.cw_client.create_log_group(
-                        logGroupName=CLOUDWATCH_GROUP)
-                except self.cw_client.exceptions.ResourceAlreadyExistsException:
-                    pass
-
-                log_stream_name = f"Node_{self.node_id}"
-                try:
-                    self.cw_client.create_log_stream(
-                        logGroupName=CLOUDWATCH_GROUP,
-                        logStreamName=log_stream_name
-                    )
-                except self.cw_client.exceptions.ResourceAlreadyExistsException:
-                    pass
-
-                self.logger.info(
-                    f"CloudWatch logging enabled in region {region}")
-            except Exception as e:
-                self.logger.warning(f"Failed to init CloudWatch: {e}")
-                self.cw_client = None
+        # Initialize CloudWatch logger (checks USE_CLOUDWATCH env var internally)
+        use_cloudwatch = os.environ.get(
+            "USE_CLOUDWATCH", "False").lower() == "true"
+        self.cw_logger = CloudWatchLogger(
+            node_id=self.node_id,
+            enabled=use_cloudwatch
+        )
 
         self.running: bool = True
 
@@ -126,15 +101,6 @@ class DistributedNode:
         with self.dead_nodes_lock:
             return set(self.dead_nodes)
 
-    def setup_logging(self) -> logging.Logger:
-        """Configure JSON logging to stdout (and optionally CloudWatch)."""
-        logger = logging.getLogger(f"Node-{self.node_id}")
-        logger.setLevel(logging.INFO)
-        handler = logging.StreamHandler(sys.stdout)
-        handler.setFormatter(logging.Formatter('%(message)s'))
-        logger.addHandler(handler)
-        return logger
-
     def log_event(self, event_type: str, message: str, **kwargs: Any) -> None:
         """Emit a structured log entry and forward to CloudWatch when enabled."""
         log_data: dict[str, Any] = {
@@ -146,53 +112,7 @@ class DistributedNode:
             **kwargs
         }
         json_log = json.dumps(log_data)
-        self.logger.info(json_log)
-
-        if self.cw_client:
-            threading.Thread(target=self._send_to_aws,
-                             args=(json_log,), daemon=True).start()
-
-    def _send_to_aws(self, json_log: str) -> None:
-        """Push a single log entry to CloudWatch, handling sequence tokens."""
-        if not self.cw_client:
-            self.logger.warning("CloudWatch client is not initialized.")
-
-            return
-        try:
-            log_kwargs: dict[str, Any] = {
-                "logGroupName": CLOUDWATCH_GROUP,
-                "logStreamName": f"Node_{self.node_id}",
-                "logEvents": [
-                    {"timestamp": int(time.time() * 1000), "message": json_log}
-                ]
-            }
-            if self.cw_sequence_token:
-                log_kwargs["sequenceToken"] = self.cw_sequence_token
-            response = self.cw_client.put_log_events(**log_kwargs)
-            self.cw_sequence_token = response.get("nextSequenceToken")
-        except self.cw_client.exceptions.InvalidSequenceTokenException as e:
-            msg = e.response.get("Error", {}).get("Message", "")
-            token = msg.split()[-1] if msg else None
-            if token:
-                self.cw_sequence_token = token
-                try:
-                    response = self.cw_client.put_log_events(
-                        logGroupName=CLOUDWATCH_GROUP,
-                        logStreamName=f"Node_{self.node_id}",
-                        logEvents=[
-                            {"timestamp": int(time.time() * 1000),
-                             "message": json_log}
-                        ],
-                        sequenceToken=self.cw_sequence_token
-                    )
-                    self.cw_sequence_token = response.get("nextSequenceToken")
-                    return
-                except Exception as retry_error:
-                    print(f"CLOUDWATCH ERROR: {retry_error}")
-            else:
-                print(f"CLOUDWATCH ERROR: {e}")
-        except Exception as e:
-            print(f"CLOUDWATCH ERROR: {e}")
+        self.cw_logger.log(json_log)
 
     def tick(self) -> int:
         with self.clock_lock:
