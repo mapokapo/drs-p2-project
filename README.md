@@ -54,12 +54,16 @@ Ovaj repozitorij sadrži **kompletan distribuirani sustav** implementiran na AWS
 │   ├── admin_script.sh      # Slanje komandi na remote čvorove via tmux
 │   └── deploy.sh            # Deploy i pokretanje čvora (poziva Terraform)
 ├── README.md                # Ovaj dokument
-└── task.md                  # Originalni projektni zadatak
+├── task.md                  # Originalni projektni zadatak
+└── docs/
+    └── architecture.md      # Arhitekturni dijagram (Mermaid format)
 ```
 
 ---
 
 ## 🏗️ Arhitektura sustava
+
+> 📊 **Vizualni dijagrami:** Detaljna arhitektura s Mermaid dijagramima dostupna je u [`docs/architecture.md`](docs/architecture.md)
 
 ### Infrastruktura (AWS)
 
