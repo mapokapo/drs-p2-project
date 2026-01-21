@@ -22,12 +22,17 @@ variable "lab_key_name" {
 
 variable "node_count" {
   description = "Broj čvorova u distribuiranom sustavu (Min 5 prema zahtjevima)"
-  default     = 5 
+  default     = 5
 }
 
 variable "app_port" {
   description = "TCP port na kojem node.py sluša"
   default     = 5000
+}
+
+variable "log_group_name" {
+  description = "CloudWatch log group for distributed system nodes"
+  default     = "Distributed_System_Logs"
 }
 
 variable "iam_instance_profile" {
@@ -106,17 +111,60 @@ resource "aws_instance" "distributed_node" {
   key_name               = var.lab_key_name
   vpc_security_group_ids = [aws_security_group.dist_sys_sg.id]
   # Pick a subnet automatically from the available ones
-  subnet_id              = element(data.aws_subnets.default.ids, count.index % length(data.aws_subnets.default.ids))
-  
-  iam_instance_profile   = var.iam_instance_profile
+  subnet_id = element(
+    data.aws_subnets.default.ids,
+    count.index % length(data.aws_subnets.default.ids)
+  )
+
+  iam_instance_profile = var.iam_instance_profile
 
   tags = {
     Name    = "Node-${count.index + 1}"
     Project = "P2"
-    Team    = "T2" 
+    Team    = "T2"
   }
 
   user_data = templatefile("${path.module}/user_data.sh.tpl", {})
+}
+
+# ========================================
+# CloudWatch Logs & Alarm
+# ========================================
+
+resource "aws_cloudwatch_log_group" "distributed_system" {
+  name              = var.log_group_name
+  retention_in_days = 14
+
+  tags = {
+    Project = "P2"
+    Team    = "T2"
+  }
+}
+
+resource "aws_cloudwatch_log_metric_filter" "distributed_error_events" {
+  name           = "distributed-system-error-events"
+  log_group_name = aws_cloudwatch_log_group.distributed_system.name
+
+  pattern = "{ ($.event_type = \"MUTEX_FAIL\") || ($.event_type = \"CONNECTION_ERROR\") || ($.event_type = \"LISTENER_ERROR\") || ($.event_type = \"LEADER_DEAD\") }"
+
+  metric_transformation {
+    name      = "DistributedSystemErrorCount"
+    namespace = "DistributedSystem"
+    value     = "1"
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "distributed_error_alarm" {
+  alarm_name          = "distributed-system-error-alarm"
+  alarm_description   = "Alarm when distributed system reports errors/timeouts."
+  metric_name         = aws_cloudwatch_log_metric_filter.distributed_error_events.metric_transformation[0].name
+  namespace           = aws_cloudwatch_log_metric_filter.distributed_error_events.metric_transformation[0].namespace
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 1
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  treat_missing_data  = "notBreaching"
 }
 
 # ========================================
@@ -197,7 +245,7 @@ resource "terraform_data" "node_deployment" {
 
 output "node_ips" {
   description = "Javne IP adrese svih čvorova"
-  value       = { for i, node in aws_instance.distributed_node : "Node ${i+1}" => node.public_ip }
+  value       = { for i, node in aws_instance.distributed_node : "Node ${i + 1}" => node.public_ip }
 }
 
 output "ssh_quickstart" {
