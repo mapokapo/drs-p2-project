@@ -114,8 +114,8 @@ resource "aws_instance" "node" {
   # Instalacija Python okruženja pri bootanju
   user_data = <<-EOF
     #!/bin/bash
-    apt-get update
-    apt-get install -y python3-pip python3-boto3
+  apt-get update
+  apt-get install -y python3-pip python3-boto3 tmux
   EOF
 }
 
@@ -174,14 +174,9 @@ resource "terraform_data" "deploy_app" {
     inline = [
       "while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do sleep 1; done",
       "pkill -f node.py || true",
-      # Pokrećemo node.py u pozadini (nohup)
-      # Postavljamo AUTO_RUN=true za automatsko generiranje prometa
-      # Postavljamo USE_CLOUDWATCH=true za logiranje
-      "export AUTO_RUN=true",
-      "export USE_CLOUDWATCH=true",
-      "export AWS_REGION=us-east-1",
-      "nohup python3 node.py --id ${count.index + 1} --peers peers.json > node.log 2>&1 &",
-      "sleep 1" # Kratka pauza da osiguramo da proces krene
+      "tmux has-session -t node 2>/dev/null && tmux kill-session -t node || true",
+      "tmux new-session -d -s node 'USE_CLOUDWATCH=true AWS_REGION=us-east-1 python3 node.py --id ${count.index + 1} --peers peers.json | tee node.log'",
+      "sleep 1"
     ]
   }
 }
