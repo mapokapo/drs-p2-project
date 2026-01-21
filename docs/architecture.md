@@ -65,7 +65,7 @@ flowchart TB
     IAM -.->|"permissions"| Nodes
 
     %% External
-    Admin["👤 Administrator<br/>(SSH + admin_script.sh)"]
+    Admin["Administrator<br/>(SSH + admin_script.sh)"]
     Admin -->|"SSH :22"| N1 & N2 & N3 & N4 & N5
 
     TF["🔧 Terraform<br/>(IaC)"]
@@ -78,12 +78,12 @@ flowchart TB
 flowchart LR
     subgraph Protocol["Message Types (JSON over TCP)"]
         direction TB
-        REQ["📨 REQUEST<br/>Mutex zahtjev"]
-        REP["✅ REPLY<br/>Mutex odobrenje"]
-        ELE["🗳️ ELECTION<br/>Početak izbora"]
-        ANS["📢 ANSWER<br/>Odgovor višeg čvora"]
-        COO["👑 COORDINATOR<br/>Objava vođe"]
-        HB["💓 HEARTBEAT<br/>Liveness provjera"]
+        REQ["REQUEST<br/>Mutex zahtjev"]
+        REP["REPLY<br/>Mutex odobrenje"]
+        ELE["ELECTION<br/>Početak izbora"]
+        ANS["ANSWER<br/>Odgovor višeg čvora"]
+        COO["COORDINATOR<br/>Objava vođe"]
+        HB["HEARTBEAT<br/>Liveness provjera"]
     end
 ```
 
@@ -117,8 +117,8 @@ stateDiagram-v2
 flowchart TB
     subgraph Node["DistributedNode (node.py)"]
         subgraph Core["Jezgra"]
-            LC["⏰ Lamport Clock<br/>(tick, update_clock)"]
-            SM["📬 Send/Receive<br/>(TCP sockets)"]
+            LC["Lamport Clock<br/>(tick, update_clock)"]
+            SM["Send/Receive<br/>(TCP sockets)"]
         end
 
         subgraph Mutex["Ricart-Agrawala"]
@@ -147,7 +147,7 @@ flowchart TB
     end
 
     Peers["Peer Nodes"] <-->|"TCP :5000"| SM
-    JS -->|"boto3"| CloudWatch["☁️ CloudWatch"]
+    JS -->|"boto3"| CloudWatch["CloudWatch"]
 ```
 
 ## Dijagram sekvence - Mutex zahtjev
@@ -189,7 +189,7 @@ sequenceDiagram
 
     Note over N2,N5: Node 5 je trenutni koordinator
 
-    N5->>N5: 💀 Kvar / Shutdown
+    N5->>N5: Kvar / Shutdown
 
     Note over N2,N4: Timeout - nema heartbeat
 
