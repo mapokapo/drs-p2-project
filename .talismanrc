@@ -8,7 +8,7 @@ fileignoreconfig:
 - filename: main.tf
   checksum: 8199b11a3297b8f87165c2654d6f87c4fa329c61c0c3b7722d25cb67094ed1b9
 - filename: scripts/admin_script.sh
-  checksum: 80ce7a5c109ad7b496ad7a338a2b26bbc3040a5949faf573b2a97d06593eda7c
+  checksum: 26ccc94e5995f70dce1973959a5c3da96c0b63fc0c8a207b0917ff9a46d5153a
 - filename: uv.lock
   checksum: abe4f4ddd509c61cf5057dbd84c2c18c4c90ee8741a6dff59396e9b7d6d66957
 version: "1.0"

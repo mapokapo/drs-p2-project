@@ -27,23 +27,49 @@ if [[ ! -d "$TERRAFORM_DIR" ]]; then
     exit 1
 fi
 
-TF_OUTPUT=$(cd "$TERRAFORM_DIR" && terraform output -json node_ips)
+# Debug info
+echo "DEBUG: Fetching IP for Node $NODE_ID..."
+echo "DEBUG: Terraform Dir: $TERRAFORM_DIR"
 
-if [[ -z "$TF_OUTPUT" ]]; then
-  echo "Error: Failed to get terraform output from directory $TERRAFORM_DIR"
+# switch to terraform dir to capture output
+pushd "$TERRAFORM_DIR" > /dev/null
+TF_OUTPUT=$(terraform output -json node_ips)
+TF_EXIT=$?
+popd > /dev/null
+
+if [[ $TF_EXIT -ne 0 ]]; then
+    echo "Error: 'terraform output' command failed with exit code $TF_EXIT"
+    exit 1
+fi
+
+# Trim whitespace and check
+if [[ -z "${TF_OUTPUT//[[:space:]]/}" ]]; then
+  echo "Error: Terraform output was empty or whitespace only."
+  echo "DEBUG: Raw output: '$TF_OUTPUT'"
   exit 1
 fi
 
-NODE_IP=$(echo "$TF_OUTPUT" | python3 - "$NODE_ID" <<'PY'
+# Create a permanent debugging block regarding the output content
+echo "DEBUG: Terraform output captured (length: ${#TF_OUTPUT} chars)" >&2
+
+# Use a temp file to pass data to python to avoid pipe issues
+TMP_JSON="/tmp/node_ips_$$.json"
+echo "$TF_OUTPUT" > "$TMP_JSON"
+
+NODE_IP=$(python3 - "$NODE_ID" "$TMP_JSON" <<'PY'
 import json
 import sys
 
 node_id = sys.argv[1]
-content = ""
+json_file = sys.argv[2]
+
 try:
-    content = sys.stdin.read()
+    with open(json_file, 'r') as f:
+        content = f.read()
+        
     if not content.strip():
-        raise ValueError("Empty input")
+        raise ValueError("Empty input in temp file")
+    
     data = json.loads(content)
     
     key = f"Node {node_id}"
@@ -53,9 +79,11 @@ try:
         sys.exit(2)
     print(ip)
 except Exception as e:
-    sys.stderr.write(f"Error parsing JSON: {e}\nInput content preview: {content[:100]!r}\n")
+    sys.stderr.write(f"Error parsing JSON from file: {e}\nInput content preview: {content[:100]!r}\n")
     sys.exit(1)
 PY
 )
 
-ssh -i "$KEY_PATH" "$SSH_USER@$NODE_IP" "tmux send-keys -t $TMUX_SESSION '$COMMAND' C-m"
+rm -f "$TMP_JSON"
+
+ssh -o StrictHostKeyChecking=no -i "$KEY_PATH" "$SSH_USER@$NODE_IP" "tmux send-keys -t $TMUX_SESSION '$COMMAND' C-m"
