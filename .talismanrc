@@ -1,4 +1,6 @@
 fileignoreconfig:
+- filename: README.md
+  checksum: 6f49eb89c65fa6211a0a60dac8ce2708c92d7154ba7c4a93e00e1bc2a8568281
 - filename: admin_script.sh
   checksum: eb445b0761510d45d666be09e19b2ebf566ed60301dcbd3f103ad99b2e9ac73d
 - filename: main.tf
