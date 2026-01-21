@@ -18,7 +18,7 @@ class CloudWatchLogger:
         node_id: int,
         log_group: str = "Distributed_System_Logs",
         region: Optional[str] = None,
-        enabled: bool = True
+        enabled: bool = True,
     ) -> None:
         """Initialize CloudWatch logger.
 
@@ -48,15 +48,15 @@ class CloudWatchLogger:
         logger = logging.getLogger(f"Node-{self.node_id}")
         logger.setLevel(logging.INFO)
         handler = logging.StreamHandler(sys.stdout)
-        handler.setFormatter(logging.Formatter('%(message)s'))
+        handler.setFormatter(logging.Formatter("%(message)s"))
         logger.addHandler(handler)
         return logger
 
     def _initialize_cloudwatch(self, region: Optional[str]) -> None:
         """Initialize CloudWatch client and create log group/stream if needed."""
         try:
-            aws_region = region or os.environ.get('AWS_REGION', 'us-east-1')
-            self.cw_client = boto3.client('logs', region_name=aws_region)
+            aws_region = region or os.environ.get("AWS_REGION", "us-east-1")
+            self.cw_client = boto3.client("logs", region_name=aws_region)
 
             # Create log group if it doesn't exist
             try:
@@ -67,8 +67,7 @@ class CloudWatchLogger:
             # Create log stream if it doesn't exist
             try:
                 self.cw_client.create_log_stream(
-                    logGroupName=self.log_group,
-                    logStreamName=self.log_stream
+                    logGroupName=self.log_group, logStreamName=self.log_stream
                 )
             except self.cw_client.exceptions.ResourceAlreadyExistsException:
                 pass
@@ -93,9 +92,7 @@ class CloudWatchLogger:
         # Forward to CloudWatch in background if enabled
         if self.enabled and self.cw_client:
             threading.Thread(
-                target=self._send_to_cloudwatch,
-                args=(json_log,),
-                daemon=True
+                target=self._send_to_cloudwatch, args=(json_log,), daemon=True
             ).start()
 
     def _send_to_cloudwatch(self, json_log: str) -> None:
@@ -113,7 +110,7 @@ class CloudWatchLogger:
                 "logStreamName": self.log_stream,
                 "logEvents": [
                     {"timestamp": int(time.time() * 1000), "message": json_log}
-                ]
+                ],
             }
 
             if self.sequence_token:
@@ -134,16 +131,14 @@ class CloudWatchLogger:
                         logGroupName=self.log_group,
                         logStreamName=self.log_stream,
                         logEvents=[
-                            {"timestamp": int(time.time() * 1000),
-                             "message": json_log}
+                            {"timestamp": int(time.time() * 1000), "message": json_log}
                         ],
-                        sequenceToken=self.sequence_token
+                        sequenceToken=self.sequence_token,
                     )
                     self.sequence_token = response.get("nextSequenceToken")
                     return
                 except Exception as retry_error:
-                    print(
-                        f"CLOUDWATCH ERROR (retry): {retry_error}", file=sys.stderr)
+                    print(f"CLOUDWATCH ERROR (retry): {retry_error}", file=sys.stderr)
             else:
                 print(f"CLOUDWATCH ERROR: {e}", file=sys.stderr)
 
