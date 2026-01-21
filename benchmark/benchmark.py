@@ -57,7 +57,7 @@ class BenchmarkResult:
     cs_entries: int = 0
 
     # Raw log lines for analysis
-    log_lines: list[dict[str, Any]] = field(default_factory=list)
+    log_lines: list[dict[str, Any]] = field(default_factory=list) # type: ignore
 
 
 @dataclass
