@@ -12,11 +12,11 @@ flowchart TB
         subgraph VPC["Default VPC"]
             subgraph SG["Security Group (dist-system-sg)"]
                 subgraph Nodes["EC2 Instance (t3.micro, Ubuntu 24.04)"]
-                    N1["🖥️ Node 1<br/>TCP :5000"]
-                    N2["🖥️ Node 2<br/>TCP :5000"]
-                    N3["🖥️ Node 3<br/>TCP :5000"]
-                    N4["🖥️ Node 4<br/>TCP :5000"]
-                    N5["🖥️ Node 5<br/>TCP :5000"]
+                    N1["Node 1<br/>TCP :5000"]
+                    N2["Node 2<br/>TCP :5000"]
+                    N3["Node 3<br/>TCP :5000"]
+                    N4["Node 4<br/>TCP :5000"]
+                    N5["Node 5<br/>TCP :5000"]
                 end
             end
         end
@@ -68,7 +68,7 @@ flowchart TB
     Admin["Administrator<br/>(SSH + admin_script.sh)"]
     Admin -->|"SSH :22"| N1 & N2 & N3 & N4 & N5
 
-    TF["🔧 Terraform<br/>(IaC)"]
+    TF["Terraform<br/>(IaC)"]
     TF -->|"provision"| AWS
 ```
 
