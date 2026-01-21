@@ -37,6 +37,34 @@ class NodeState(Enum):
     HELD = "HELD"
 
 
+class ThreadSafeSet:
+    """Thread-safe set for tracking nodes."""
+
+    def __init__(self) -> None:
+        self._set: set[int] = set()
+        self._lock: threading.Lock = threading.Lock()
+
+    def add(self, item: int) -> None:
+        with self._lock:
+            self._set.add(item)
+
+    def discard(self, item: int) -> None:
+        with self._lock:
+            self._set.discard(item)
+
+    def __contains__(self, item: int) -> bool:
+        with self._lock:
+            return item in self._set
+
+    def __len__(self) -> int:
+        with self._lock:
+            return len(self._set)
+
+    def snapshot(self) -> set[int]:
+        with self._lock:
+            return set(self._set)
+
+
 class DistributedNode:
     """Cluster node with TCP messaging, election, and mutex coordination."""
 
@@ -61,8 +89,7 @@ class DistributedNode:
 
         self.peer_connections: Dict[int, socket.socket] = {}
         self.conn_lock: threading.Lock = threading.Lock()
-        self.dead_nodes: set[int] = set()
-        self.dead_nodes_lock: threading.Lock = threading.Lock()
+        self.dead_nodes: ThreadSafeSet = ThreadSafeSet()
 
         self.server_socket: socket.socket = socket.socket(
             socket.AF_INET, socket.SOCK_STREAM)
@@ -80,26 +107,6 @@ class DistributedNode:
         )
 
         self.running: bool = True
-
-    def _mark_dead(self, node_id: int) -> None:
-        with self.dead_nodes_lock:
-            self.dead_nodes.add(node_id)
-
-    def _mark_alive(self, node_id: int) -> None:
-        with self.dead_nodes_lock:
-            self.dead_nodes.discard(node_id)
-
-    def _is_dead(self, node_id: int) -> bool:
-        with self.dead_nodes_lock:
-            return node_id in self.dead_nodes
-
-    def _dead_nodes_count(self) -> int:
-        with self.dead_nodes_lock:
-            return len(self.dead_nodes)
-
-    def _dead_nodes_snapshot(self) -> set[int]:
-        with self.dead_nodes_lock:
-            return set(self.dead_nodes)
 
     def log_event(self, event_type: str, message: str, **kwargs: Any) -> None:
         """Emit a structured log entry and forward to CloudWatch when enabled."""
@@ -124,7 +131,7 @@ class DistributedNode:
             self.lamport_clock = max(self.lamport_clock, received_time) + 1
 
     def _expected_replies(self) -> int:
-        return max(0, len(self.peers) - 1 - self._dead_nodes_count())
+        return max(0, len(self.peers) - 1 - len(self.dead_nodes))
 
     def _check_replies_completion(self) -> None:
         if len(self.replies_received) >= self._expected_replies():
@@ -146,7 +153,7 @@ class DistributedNode:
                 s.connect((target_ip, target_port))
                 s.settimeout(None)
                 self.peer_connections[target_id] = s
-                self._mark_alive(target_id)
+                self.dead_nodes.discard(target_id)
                 return s
             except Exception as e:
                 if target_id not in self.dead_nodes:
@@ -162,7 +169,7 @@ class DistributedNode:
         if target_id not in self.peers:
             return
 
-        if msg_type == MessageType.HEARTBEAT and self._is_dead(target_id):
+        if msg_type == MessageType.HEARTBEAT and target_id in self.dead_nodes:
             return
 
         msg: Dict[str, Any] = {
@@ -189,8 +196,8 @@ class DistributedNode:
                             pass
                         del self.peer_connections[target_id]
 
-        if not self._is_dead(target_id):
-            self._mark_dead(target_id)
+        if target_id not in self.dead_nodes:
+            self.dead_nodes.add(target_id)
             self.log_event(
                 "NODE_DOWN", f"Failed to send message to {target_id}. Marking as dead.")
             with self.mutex_lock:
@@ -243,7 +250,7 @@ class DistributedNode:
         msg_type: MessageType = MessageType(msg['type'])
         msg_time: int = msg['timestamp']
 
-        self._mark_alive(sender)
+        self.dead_nodes.discard(sender)
         self.update_clock(msg_time)
 
         if msg_type == MessageType.REQUEST:
@@ -277,7 +284,7 @@ class DistributedNode:
             self.enter_critical_section()
             return
 
-        dead_snapshot = self._dead_nodes_snapshot()
+        dead_snapshot = self.dead_nodes.snapshot()
         for peer_id in self.peers:
             if peer_id != self.node_id and peer_id not in dead_snapshot:
                 self.send_message(peer_id, MessageType.REQUEST)
@@ -287,12 +294,12 @@ class DistributedNode:
             return
 
         with self.mutex_lock:
-            dead_snapshot = self._dead_nodes_snapshot()
+            dead_snapshot = self.dead_nodes.snapshot()
             missing_peers = {pid for pid in self.peers if pid !=
                              self.node_id and pid not in self.replies_received and pid not in dead_snapshot}
             if missing_peers:
                 for pid in missing_peers:
-                    self._mark_dead(pid)
+                    self.dead_nodes.add(pid)
                 self._check_replies_completion()
 
         if self.received_replies_event.is_set():
@@ -350,7 +357,7 @@ class DistributedNode:
         self.election_in_progress = True
         self.log_event("ELECTION_START", "Starting Election Process")
 
-        dead_snapshot = self._dead_nodes_snapshot()
+        dead_snapshot = self.dead_nodes.snapshot()
         higher_nodes = [pid for pid in self.peers if pid >
                         self.node_id and pid not in dead_snapshot]
 
@@ -412,7 +419,7 @@ class DistributedNode:
                 if time.time() - self.last_heartbeat_time > (HEARTBEAT_INTERVAL + 4):
                     self.log_event(
                         "LEADER_DEAD", f"Leader {self.coordinator_id} timed out.")
-                    self._mark_dead(self.coordinator_id)
+                    self.dead_nodes.add(self.coordinator_id)
                     self.coordinator_id = None
                     self.start_election()
 
