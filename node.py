@@ -20,8 +20,6 @@ CLOUDWATCH_GROUP = "Distributed_System_Logs"
 HEARTBEAT_INTERVAL = 2.0
 ELECTION_TIMEOUT = 5.0
 MUTEX_REPLY_TIMEOUT = 5.0
-# Ako je True, čvor sam generira promet (za demo bez tipkanja)
-AUTO_RUN = os.environ.get("AUTO_RUN", "False").lower() == "true"
 
 
 class MessageType(Enum):
@@ -63,35 +61,39 @@ class DistributedNode:
         self.conn_lock: threading.Lock = threading.Lock()
         self.dead_nodes: set[int] = set()
 
-        self.server_socket: socket.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.server_socket: socket.socket = socket.socket(
+            socket.AF_INET, socket.SOCK_STREAM)
+        self.server_socket.setsockopt(
+            socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.server_socket.bind(('', self.port))
         self.server_socket.listen(5)
 
         self.cw_client = None
         self.logger: logging.Logger = self.setup_logging()
-        
+
         # Inicijalizacija CloudWatch-a samo ako je uključeno
         if USE_CLOUDWATCH:
             try:
                 region = os.environ.get('AWS_REGION', 'us-east-1')
                 self.cw_client = boto3.client('logs', region_name=region)
-                
+
                 try:
-                    self.cw_client.create_log_group(logGroupName=CLOUDWATCH_GROUP)
+                    self.cw_client.create_log_group(
+                        logGroupName=CLOUDWATCH_GROUP)
                 except self.cw_client.exceptions.ResourceAlreadyExistsException:
-                    pass # Grupa već postoji, sve ok
+                    pass  # Grupa već postoji, sve ok
 
                 log_stream_name = f"Node_{self.node_id}"
                 try:
                     self.cw_client.create_log_stream(
-                        logGroupName=CLOUDWATCH_GROUP, 
+                        logGroupName=CLOUDWATCH_GROUP,
                         logStreamName=log_stream_name
                     )
                 except self.cw_client.exceptions.ResourceAlreadyExistsException:
-                    pass # Stream već postoji, sve ok
+                    pass  # Stream već postoji, sve ok
 
-                self.logger.info(f"CloudWatch logging enabled in region {region}")
+                self.logger.info(
+                    f"CloudWatch logging enabled in region {region}")
             except Exception as e:
                 # Ovdje je dobro ispisati grešku da znaš zašto je fallalo
                 self.logger.warning(f"Failed to init CloudWatch: {e}")
@@ -120,7 +122,8 @@ class DistributedNode:
         self.logger.info(json_log)
 
         if self.cw_client:
-            threading.Thread(target=self._send_to_aws, args=(json_log,), daemon=True).start()
+            threading.Thread(target=self._send_to_aws,
+                             args=(json_log,), daemon=True).start()
 
     def _send_to_aws(self, json_log: str) -> None:
         if not self.cw_client:
@@ -131,7 +134,8 @@ class DistributedNode:
             self.cw_client.put_log_events(
                 logGroupName=CLOUDWATCH_GROUP,
                 logStreamName=f"Node_{self.node_id}",
-                logEvents=[{'timestamp': int(time.time() * 1000), 'message': json_log}]
+                logEvents=[
+                    {'timestamp': int(time.time() * 1000), 'message': json_log}]
             )
         except Exception as e:
             print(f"CLOUDWATCH ERROR: {e}")
@@ -156,7 +160,7 @@ class DistributedNode:
         with self.conn_lock:
             if target_id in self.peer_connections:
                 return self.peer_connections[target_id]
-            
+
             if target_id not in self.peers:
                 return None
 
@@ -172,7 +176,8 @@ class DistributedNode:
             except Exception as e:
                 # Logiramo samo ako čvor već nije označen kao mrtav da smanjimo šum
                 if target_id not in self.dead_nodes:
-                    self.log_event("CONNECTION_ERROR", f"Failed to connect to Node {target_id}", error=str(e))
+                    self.log_event(
+                        "CONNECTION_ERROR", f"Failed to connect to Node {target_id}", error=str(e))
                 return None
 
     def _send_bytes(self, sock: socket.socket, data: bytes) -> None:
@@ -206,12 +211,14 @@ class DistributedNode:
                     if target_id in self.peer_connections:
                         try:
                             self.peer_connections[target_id].close()
-                        except: pass
+                        except:
+                            pass
                         del self.peer_connections[target_id]
 
         if target_id not in self.dead_nodes:
             self.dead_nodes.add(target_id)
-            self.log_event("NODE_DOWN", f"Failed to send message to {target_id}. Marking as dead.")
+            self.log_event(
+                "NODE_DOWN", f"Failed to send message to {target_id}. Marking as dead.")
             with self.mutex_lock:
                 if self.state == NodeState.WANTED:
                     self._check_replies_completion()
@@ -250,7 +257,8 @@ class DistributedNode:
         while self.running:
             try:
                 client, addr = self.server_socket.accept()
-                threading.Thread(target=self.handle_client_connection, args=(client, addr), daemon=True).start()
+                threading.Thread(target=self.handle_client_connection, args=(
+                    client, addr), daemon=True).start()
             except OSError:
                 break
             except Exception as e:
@@ -280,14 +288,15 @@ class DistributedNode:
     def request_critical_section(self) -> None:
         with self.mutex_lock:
             if self.state != NodeState.RELEASED:
-                return # Već sam unutra ili čekam
+                return  # Već sam unutra ili čekam
             self.state = NodeState.WANTED
             self.request_clock = self.tick()
             self.replies_received.clear()
             self.received_replies_event.clear()
             expected_replies = self._expected_replies()
 
-        self.log_event("MUTEX", "Requesting Critical Section", req_clock=self.request_clock)
+        self.log_event("MUTEX", "Requesting Critical Section",
+                       req_clock=self.request_clock)
 
         if expected_replies == 0:
             self.enter_critical_section()
@@ -303,16 +312,18 @@ class DistributedNode:
 
         # Timeout handling
         with self.mutex_lock:
-            missing_peers = {pid for pid in self.peers if pid != self.node_id and pid not in self.replies_received and pid not in self.dead_nodes}
+            missing_peers = {pid for pid in self.peers if pid !=
+                             self.node_id and pid not in self.replies_received and pid not in self.dead_nodes}
             if missing_peers:
                 for pid in missing_peers:
                     self.dead_nodes.add(pid)
                 self._check_replies_completion()
-        
+
         if self.received_replies_event.is_set():
             self.enter_critical_section()
         else:
-            self.log_event("MUTEX_FAIL", "Timeout waiting for replies. Releasing.")
+            self.log_event(
+                "MUTEX_FAIL", "Timeout waiting for replies. Releasing.")
             with self.mutex_lock:
                 self.state = NodeState.RELEASED
 
@@ -360,14 +371,16 @@ class DistributedNode:
         self.election_in_progress = True
         self.log_event("ELECTION_START", "Starting Election Process")
 
-        higher_nodes = [pid for pid in self.peers if pid > self.node_id and pid not in self.dead_nodes]
+        higher_nodes = [pid for pid in self.peers if pid >
+                        self.node_id and pid not in self.dead_nodes]
 
         if not higher_nodes:
             self.become_coordinator()
         else:
             for pid in higher_nodes:
                 self.send_message(pid, MessageType.ELECTION)
-            threading.Thread(target=self._wait_for_election_result, daemon=True).start()
+            threading.Thread(
+                target=self._wait_for_election_result, daemon=True).start()
 
     def _wait_for_election_result(self) -> None:
         time.sleep(ELECTION_TIMEOUT)
@@ -404,7 +417,8 @@ class DistributedNode:
             self.last_heartbeat_time = time.time()
         elif self.coordinator_id is None:
             self.coordinator_id = sender
-            self.log_event("LEADER_RECOVER", f"Accepted Leader {sender} via Heartbeat")
+            self.log_event("LEADER_RECOVER",
+                           f"Accepted Leader {sender} via Heartbeat")
 
     def run_heartbeat_loop(self) -> None:
         while self.running:
@@ -415,25 +429,11 @@ class DistributedNode:
                         self.send_message(pid, MessageType.HEARTBEAT)
             elif self.coordinator_id is not None:
                 if time.time() - self.last_heartbeat_time > (HEARTBEAT_INTERVAL + 4):
-                    self.log_event("LEADER_DEAD", f"Leader {self.coordinator_id} timed out.")
+                    self.log_event(
+                        "LEADER_DEAD", f"Leader {self.coordinator_id} timed out.")
                     self.dead_nodes.add(self.coordinator_id)
                     self.coordinator_id = None
                     self.start_election()
-
-    def run_auto_simulation(self) -> None:
-        """Simulacija rada za automatizirani test."""
-        self.log_event("SYSTEM", "Starting AUTO SIMULATION mode.")
-        while self.running:
-            # Random spavanje da se izbjegne sinhronizacija svih čvorova
-            time.sleep(random.randint(5, 15))
-            
-            # Ponekad zatraži kritičnu sekciju
-            if random.random() < 0.7:
-                self.request_critical_section()
-            
-            # Ponekad provjeri stanje (samo log)
-            if random.random() < 0.2:
-                 self.log_event("STATUS", f"State: {self.state}, Leader: {self.coordinator_id}")
 
 
 # --- MAIN ---
@@ -447,12 +447,13 @@ if __name__ == "__main__":
     try:
         with open(args.peers, 'r') as f:
             config = json.load(f)
-            peers_map = {int(k): (v['ip'], v['port']) for k, v in config.items()}
-            
+            peers_map = {int(k): (v['ip'], v['port'])
+                         for k, v in config.items()}
+
             if args.id not in peers_map:
                 print(f"Error: Node ID {args.id} not found in {args.peers}")
                 sys.exit(1)
-            
+
             my_port = peers_map[args.id][1]
     except FileNotFoundError:
         print("Error: peers.json not found.")
@@ -464,31 +465,30 @@ if __name__ == "__main__":
     threading.Thread(target=node.listen, daemon=True).start()
     threading.Thread(target=node.run_heartbeat_loop, daemon=True).start()
 
-    time.sleep(2) # Stabilizacija
+    time.sleep(2)  # Stabilizacija
 
     # Automatski izbor vođe na početku
     if node.coordinator_id is None:
         threading.Thread(target=node.start_election, daemon=True).start()
 
-    node.log_event("SYSTEM", f"Node {node.node_id} started. Auto-run: {AUTO_RUN}")
+    node.log_event("SYSTEM", f"Node {node.node_id} started.")
 
     # GLAVNA PETLJA
     try:
-        if AUTO_RUN:
-            # Ako je auto mode (AWS), vrti simulaciju i ne blokiraj na inputu
-            node.run_auto_simulation()
-        else:
-            # Interaktivni mod (lokalno)
-            while True:
-                cmd = input().strip()
-                if cmd == 'req':
-                    threading.Thread(target=node.request_critical_section, daemon=True).start()
-                elif cmd == 'elect':
-                    node.start_election()
-                elif cmd == 'status':
-                    print(f"Leader: {node.coordinator_id}, State: {node.state}")
-                elif cmd == 'quit':
-                    raise KeyboardInterrupt
+        # Interaktivni mod (lokalno / preko SSH sesije)
+        while True:
+            cmd = input().strip()
+            if cmd == 'req':
+                threading.Thread(
+                    target=node.request_critical_section, daemon=True).start()
+            elif cmd == 'elect':
+                node.start_election()
+            elif cmd == 'status':
+                print(f"Leader: {node.coordinator_id}, State: {node.state}")
+            elif cmd in {'quit', 'kill', 'exit'}:
+                raise KeyboardInterrupt
+            elif cmd == 'help':
+                print("Commands: req | elect | status | kill/quit/exit | help")
     except KeyboardInterrupt:
         node.running = False
         sys.exit(0)
