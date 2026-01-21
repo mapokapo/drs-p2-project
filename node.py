@@ -76,9 +76,26 @@ class DistributedNode:
             try:
                 region = os.environ.get('AWS_REGION', 'us-east-1')
                 self.cw_client = boto3.client('logs', region_name=region)
+                
+                try:
+                    self.cw_client.create_log_group(logGroupName=CLOUDWATCH_GROUP)
+                except self.cw_client.exceptions.ResourceAlreadyExistsException:
+                    pass # Grupa već postoji, sve ok
+
+                log_stream_name = f"Node_{self.node_id}"
+                try:
+                    self.cw_client.create_log_stream(
+                        logGroupName=CLOUDWATCH_GROUP, 
+                        logStreamName=log_stream_name
+                    )
+                except self.cw_client.exceptions.ResourceAlreadyExistsException:
+                    pass # Stream već postoji, sve ok
+
                 self.logger.info(f"CloudWatch logging enabled in region {region}")
             except Exception as e:
+                # Ovdje je dobro ispisati grešku da znaš zašto je fallalo
                 self.logger.warning(f"Failed to init CloudWatch: {e}")
+                self.cw_client = None
 
         self.running: bool = True
 
