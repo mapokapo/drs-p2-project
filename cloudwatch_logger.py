@@ -1,5 +1,6 @@
 """CloudWatch logging integration for distributed nodes."""
 
+import json
 import logging
 import os
 import sys
@@ -79,6 +80,21 @@ class CloudWatchLogger:
             self.logger.warning(f"Failed to initialize CloudWatch: {e}")
             self.cw_client = None
             self.enabled = False
+
+    def log_event(
+        self, event_type: str, message: str, lamport_clock: int, **kwargs: Any
+    ) -> None:
+        """Emit a structured log entry and forward to CloudWatch when enabled."""
+        log_data: dict[str, Any] = {
+            "node_id": self.node_id,
+            "timestamp_iso": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()),
+            "lamport_clock": lamport_clock,
+            "event_type": event_type,
+            "message": message,
+            **kwargs,
+        }
+        json_log = json.dumps(log_data)
+        self.log(json_log)
 
     def log(self, json_log: str) -> None:
         """Log a JSON message to console and optionally CloudWatch.
