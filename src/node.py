@@ -67,6 +67,7 @@ class PeerAddress(NamedTuple):
 class ElectionState:
     coordinator_id: Optional[int] = None
     in_progress: bool = False
+    received_answer: bool = False
     last_heartbeat: float = field(default_factory=time.time)
 
 
@@ -414,6 +415,7 @@ class DistributedNode:
             return
         time.sleep(random.uniform(0.1, 0.5))
         self.election_state.in_progress = True
+        self.election_state.received_answer = False
         self.cw_logger.log_event(
             "ELECTION_START", "Starting Election Process", self.lamport_clock
         )
@@ -432,7 +434,20 @@ class DistributedNode:
 
     def _wait_for_election_result(self) -> None:
         time.sleep(ELECTION_TIMEOUT)
-        if self.election_state.in_progress:
+        if not self.election_state.in_progress:
+            return
+
+        if self.election_state.received_answer:
+            time.sleep(ELECTION_TIMEOUT)
+            if self.election_state.in_progress:
+                self.cw_logger.log_event(
+                    "ELECTION_RESTART",
+                    "Timeout waiting for coordinator. Restarting.",
+                    self.lamport_clock,
+                )
+                self.election_state.in_progress = False
+                self.start_election()
+        else:
             self.become_coordinator()
 
     def handle_election(self, sender: int, _msg_time: Optional[int] = None) -> None:
@@ -441,15 +456,16 @@ class DistributedNode:
             self.start_election()
 
     def handle_answer(self, sender: int, _msg_time: Optional[int] = None) -> None:
-        self.election_state.in_progress = True
+        self.election_state.received_answer = True
 
     def handle_coordinator(self, sender: int, _msg_time: Optional[int] = None) -> None:
-        if self.election_state.coordinator_id == sender:
-            self.election_state.last_heartbeat = time.time()
-            return
-        self.election_state.coordinator_id = sender
         self.election_state.in_progress = False
         self.election_state.last_heartbeat = time.time()
+
+        if self.election_state.coordinator_id == sender:
+            return
+
+        self.election_state.coordinator_id = sender
         self.cw_logger.log_event(
             "LEADER_UPDATE", f"New Leader is Node {sender}", self.lamport_clock
         )
