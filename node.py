@@ -20,6 +20,24 @@ ELECTION_TIMEOUT = 5.0
 MUTEX_REPLY_TIMEOUT = 5.0
 
 
+def send_bytes(sock: socket.socket, data: bytes) -> None:
+    length_prefix = struct.pack(">I", len(data))
+    sock.sendall(length_prefix + data)
+
+
+def recv_exact(sock: socket.socket, n: int) -> Optional[bytes]:
+    data = b""
+    while len(data) < n:
+        try:
+            packet = sock.recv(n - len(data))
+            if not packet:
+                return None
+            data += packet
+        except socket.error:
+            return None
+    return data
+
+
 class MessageType(Enum):
     """Protocol message kinds exchanged between nodes."""
 
@@ -98,16 +116,13 @@ class DistributedNode:
         self.server_socket: socket.socket = socket.socket(
             socket.AF_INET, socket.SOCK_STREAM
         )
-        self.server_socket.setsockopt(
-            socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.server_socket.bind(("", self.port))
         self.server_socket.listen(5)
 
         # Initialize CloudWatch logger (checks USE_CLOUDWATCH env var internally)
-        use_cloudwatch = os.environ.get(
-            "USE_CLOUDWATCH", "False").lower() == "true"
-        self.cw_logger = CloudWatchLogger(
-            node_id=self.node_id, enabled=use_cloudwatch)
+        use_cloudwatch = os.environ.get("USE_CLOUDWATCH", "False").lower() == "true"
+        self.cw_logger = CloudWatchLogger(node_id=self.node_id, enabled=use_cloudwatch)
 
         self.running: bool = True
 
@@ -167,10 +182,6 @@ class DistributedNode:
                     )
                 return None
 
-    def _send_bytes(self, sock: socket.socket, data: bytes) -> None:
-        length_prefix = struct.pack(">I", len(data))
-        sock.sendall(length_prefix + data)
-
     def send_message(
         self, target_id: int, msg_type: MessageType, **kwargs: Any
     ) -> None:
@@ -193,7 +204,7 @@ class DistributedNode:
             if not sock:
                 break
             try:
-                self._send_bytes(sock, json_data)
+                send_bytes(sock, json_data)
                 return
             except (BrokenPipeError, ConnectionResetError, socket.error):
                 with self.conn_lock:
@@ -213,29 +224,17 @@ class DistributedNode:
                 if self.state == NodeState.WANTED:
                     self._check_replies_completion()
 
-    def _recv_exact(self, sock: socket.socket, n: int) -> Optional[bytes]:
-        data = b""
-        while len(data) < n:
-            try:
-                packet = sock.recv(n - len(data))
-                if not packet:
-                    return None
-                data += packet
-            except socket.error:
-                return None
-        return data
-
     def handle_client_connection(
         self, client_sock: socket.socket, addr: Tuple[str, int]
     ) -> None:
         client_sock.settimeout(None)
         try:
             while self.running:
-                len_bytes = self._recv_exact(client_sock, 4)
+                len_bytes = recv_exact(client_sock, 4)
                 if not len_bytes:
                     break
                 msg_len = struct.unpack(">I", len_bytes)[0]
-                msg_bytes = self._recv_exact(client_sock, msg_len)
+                msg_bytes = recv_exact(client_sock, msg_len)
                 if not msg_bytes:
                     break
                 msg = json.loads(msg_bytes.decode("utf-8"))
@@ -322,8 +321,7 @@ class DistributedNode:
         if self.received_replies_event.is_set():
             self.enter_critical_section()
         else:
-            self.log_event(
-                "MUTEX_FAIL", "Timeout waiting for replies. Releasing.")
+            self.log_event("MUTEX_FAIL", "Timeout waiting for replies. Releasing.")
             with self.mutex_lock:
                 self.state = NodeState.RELEASED
 
@@ -387,8 +385,7 @@ class DistributedNode:
         else:
             for pid in higher_nodes:
                 self.send_message(pid, MessageType.ELECTION)
-            threading.Thread(
-                target=self._wait_for_election_result, daemon=True).start()
+            threading.Thread(target=self._wait_for_election_result, daemon=True).start()
 
     def _wait_for_election_result(self) -> None:
         time.sleep(ELECTION_TIMEOUT)
@@ -425,8 +422,7 @@ class DistributedNode:
             self.last_heartbeat_time = time.time()
         elif self.coordinator_id is None:
             self.coordinator_id = sender
-            self.log_event("LEADER_RECOVER",
-                           f"Accepted Leader {sender} via Heartbeat")
+            self.log_event("LEADER_RECOVER", f"Accepted Leader {sender} via Heartbeat")
 
     def run_heartbeat_loop(self) -> None:
         """Monitor and emit coordinator heartbeats with jitter."""
@@ -473,8 +469,7 @@ if __name__ == "__main__":
     try:
         with open(args.peers, "r") as f:
             config = json.load(f)
-            peers_map = {int(k): (v["ip"], v["port"])
-                         for k, v in config.items()}
+            peers_map = {int(k): (v["ip"], v["port"]) for k, v in config.items()}
 
             if args.id not in peers_map:
                 print(f"Error: Node ID {args.id} not found in {args.peers}")
