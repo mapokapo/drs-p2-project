@@ -6,7 +6,7 @@
 
 ---
 
-## 📋 Sažetak projekta
+## Sažetak projekta
 
 Ovaj repozitorij sadrži **kompletan distribuirani sustav** implementiran na AWS platformi koji demonstrira ključne algoritme koordinacije u distribuiranim sustavima. Projekt u potpunosti zadovoljava zahtjeve projektnog zadatka P2 i koristi **Terraform** za _Infrastructure as Code_ (IaC) s potpuno automatiziranim postavljanjem okruženja.
 
@@ -18,14 +18,14 @@ Ovaj repozitorij sadrži **kompletan distribuirani sustav** implementiran na AWS
 
 ### Ispunjeni minimalni zahtjevi:
 
-✅ **5 čvorova** - Svaki čvor s jedinstvenim identitetom  
-✅ **Lamportov sat** - Ispravna implementacija `max + 1` pravila  
-✅ **Međusobno isključivanje** - Dokazano u CloudWatch logovima  
-✅ **Izbor vođe** - Automatski oporavak od kvara vođe (heartbeat + timeout)  
-✅ **Mjerenja performansi** - Broj poruka i vrijeme čekanja  
-✅ **CloudWatch** - Strukturirani logovi i alarmi  
-✅ **IAM** - Least-privilege princip (LabInstanceProfile)  
-✅ **Tagiranje** - `Project=P2` i `Team=T2`
+[x] **5 čvorova** - Svaki čvor s jedinstvenim identitetom  
+[x] **Lamportov sat** - Ispravna implementacija `max + 1` pravila  
+[x] **Međusobno isključivanje** - Dokazano u CloudWatch logovima  
+[x] **Izbor vođe** - Automatski oporavak od kvara vođe (heartbeat + timeout)  
+[x] **Mjerenja performansi** - Broj poruka i vrijeme čekanja  
+[x] **CloudWatch** - Strukturirani logovi i alarmi  
+[x] **IAM** - Least-privilege princip (LabInstanceProfile)  
+[x] **Tagiranje** - `Project=P2` i `Team=T2`
 
 ---
 
@@ -38,7 +38,7 @@ Ovaj repozitorij sadrži **kompletan distribuirani sustav** implementiran na AWS
 
 ---
 
-## 📂 Struktura projekta
+## Struktura projekta
 
 ```
 ├── src/                      # Python kod čvorova
@@ -67,9 +67,9 @@ Ovaj repozitorij sadrži **kompletan distribuirani sustav** implementiran na AWS
 
 ---
 
-## 🏗️ Arhitektura sustava
+## Arhitektura sustava
 
-> 📊 **Vizualni dijagrami:** Detaljna arhitektura s Mermaid dijagramima dostupna je u [`docs/architecture.md`](docs/architecture.md)
+> **Vizualni dijagrami:** Detaljna arhitektura s Mermaid dijagramima dostupna je u [`docs/architecture.md`](docs/architecture.md)
 
 ### Infrastruktura (AWS)
 
@@ -113,7 +113,7 @@ Sustav se sastoji od **5 EC2 instanci** (t3.micro, Ubuntu 24.04) unutar default 
 
 ---
 
-## 🚀 Upute za pokretanje
+## Upute za pokretanje
 
 ### Preduvjeti
 
@@ -384,32 +384,32 @@ terraform destroy -auto-approve
 
 ---
 
-## 📊 Sigurnost i najbolje prakse
+## Sigurnost i najbolje prakse
 
 ### Sigurnost
 
-✅ **IAM Least Privilege** - Koristi se postojeći `LabInstanceProfile` s minimalnim potrebnim dozvolama  
-✅ **Security Groups** - Ograničena komunikacija samo na potrebne portove  
-✅ **Tajne** - Nisu pohranjene u kodu; koriste se environment varijable  
-✅ **SSH** - Pristup samo s privatnim ključem (`labsuser.pem`)
+[x] **IAM Least Privilege** - Koristi se postojeći `LabInstanceProfile` s minimalnim potrebnim dozvolama  
+[x] **Security Groups** - Ograničena komunikacija samo na potrebne portove  
+[x] **Tajne** - Nisu pohranjene u kodu; koriste se environment varijable  
+[x] **SSH** - Pristup samo s privatnim ključem (`labsuser.pem`)
 
 ### Toleriranje kvarova
 
-✅ **Failure Detection** - TCP timeout + retry mehanizam  
-✅ **Dead Node Tracking** - Thread-safe praćenje neaktivnih čvorova  
-✅ **Leader Recovery** - Automatski heartbeat i re-election  
-✅ **Mutex Resilience** - Smanjeni quorum ako čvor nije dostupan
+[x] **Failure Detection** - TCP timeout + retry mehanizam  
+[x] **Dead Node Tracking** - Thread-safe praćenje neaktivnih čvorova  
+[x] **Leader Recovery** - Automatski heartbeat i re-election  
+[x] **Mutex Resilience** - Smanjeni quorum ako čvor nije dostupan
 
 ### Reproducibilnost
 
-✅ **IaC** - Terraform konfiguracija s verzioniranim stanjem  
-✅ **Automatizacija** - Potpuno automatski deploy od nule do pokretanja  
-✅ **Dokumentacija** - Jasne upute za setup, test i teardown  
-✅ **Git** - Verzioniranje koda i infrastrukture
+[x] **IaC** - Terraform konfiguracija s verzioniranim stanjem  
+[x] **Automatizacija** - Potpuno automatski deploy od nule do pokretanja  
+[x] **Dokumentacija** - Jasne upute za setup, test i teardown  
+[x] **Git** - Verzioniranje koda i infrastrukture
 
 ---
 
-## 📚 Dodatne informacije
+## Dodatne informacije
 
 ### Struktura poruka (JSON)
 
@@ -458,18 +458,7 @@ def update_clock(received_time):
 
 ---
 
-## 🔗 Reference
-
-- **Projektni zadatak:** `task.md`
-- **Terraform dokumentacija:** https://www.terraform.io/docs
-- **AWS Academy:** AWS Academy Learner Lab upute
-- **Lamport Clocks:** Leslie Lamport, "Time, Clocks, and the Ordering of Events in a Distributed System"
-- **Ricart-Agrawala:** G. Ricart & A.K. Agrawala, "An Optimal Algorithm for Mutual Exclusion"
-- **Bully Algorithm:** H. Garcia-Molina, "Elections in a Distributed Computing System"
-
----
-
-## 📝 Licenca i autori
+## Licenca i autori
 
 **Projekt:** P2 - Distribuirana koordinacija  
 **Kolegij:** Distribuirani računalni sustavi  
