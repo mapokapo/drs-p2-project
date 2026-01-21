@@ -1,8 +1,11 @@
+"""Distributed node with Ricart-Agrawala mutex and bully election."""
+
 import argparse
 import json
 import logging
 import os
 import random
+import signal
 import socket
 import struct
 import sys
@@ -13,8 +16,6 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import boto3
 
-# --- KONFIGURACIJA ---
-# Čitamo iz environment varijabli kako bi radilo na AWS-u bez hardkodiranja
 USE_CLOUDWATCH = os.environ.get("USE_CLOUDWATCH", "False").lower() == "true"
 CLOUDWATCH_GROUP = "Distributed_System_Logs"
 HEARTBEAT_INTERVAL = 2.0
@@ -23,6 +24,7 @@ MUTEX_REPLY_TIMEOUT = 5.0
 
 
 class MessageType(Enum):
+    """Protocol message kinds exchanged between nodes."""
     REQUEST = "REQUEST"
     REPLY = "REPLY"
     ELECTION = "ELECTION"
@@ -32,12 +34,15 @@ class MessageType(Enum):
 
 
 class NodeState(Enum):
+    """Mutex state used by Ricart-Agrawala mutual exclusion."""
     RELEASED = "RELEASED"
     WANTED = "WANTED"
     HELD = "HELD"
 
 
 class DistributedNode:
+    """Cluster node with TCP messaging, election, and mutex coordination."""
+
     def __init__(self, node_id: int, peers: Dict[int, Tuple[str, int]], local_port: int) -> None:
         self.node_id: int = node_id
         self.peers: Dict[int, Tuple[str, int]] = peers
@@ -60,6 +65,7 @@ class DistributedNode:
         self.peer_connections: Dict[int, socket.socket] = {}
         self.conn_lock: threading.Lock = threading.Lock()
         self.dead_nodes: set[int] = set()
+        self.dead_nodes_lock: threading.Lock = threading.Lock()
 
         self.server_socket: socket.socket = socket.socket(
             socket.AF_INET, socket.SOCK_STREAM)
@@ -69,9 +75,9 @@ class DistributedNode:
         self.server_socket.listen(5)
 
         self.cw_client = None
+        self.cw_sequence_token: Optional[str] = None
         self.logger: logging.Logger = self.setup_logging()
 
-        # Inicijalizacija CloudWatch-a samo ako je uključeno
         if USE_CLOUDWATCH:
             try:
                 region = os.environ.get('AWS_REGION', 'us-east-1')
@@ -81,7 +87,7 @@ class DistributedNode:
                     self.cw_client.create_log_group(
                         logGroupName=CLOUDWATCH_GROUP)
                 except self.cw_client.exceptions.ResourceAlreadyExistsException:
-                    pass  # Grupa već postoji, sve ok
+                    pass
 
                 log_stream_name = f"Node_{self.node_id}"
                 try:
@@ -90,18 +96,38 @@ class DistributedNode:
                         logStreamName=log_stream_name
                     )
                 except self.cw_client.exceptions.ResourceAlreadyExistsException:
-                    pass  # Stream već postoji, sve ok
+                    pass
 
                 self.logger.info(
                     f"CloudWatch logging enabled in region {region}")
             except Exception as e:
-                # Ovdje je dobro ispisati grešku da znaš zašto je fallalo
                 self.logger.warning(f"Failed to init CloudWatch: {e}")
                 self.cw_client = None
 
         self.running: bool = True
 
+    def _mark_dead(self, node_id: int) -> None:
+        with self.dead_nodes_lock:
+            self.dead_nodes.add(node_id)
+
+    def _mark_alive(self, node_id: int) -> None:
+        with self.dead_nodes_lock:
+            self.dead_nodes.discard(node_id)
+
+    def _is_dead(self, node_id: int) -> bool:
+        with self.dead_nodes_lock:
+            return node_id in self.dead_nodes
+
+    def _dead_nodes_count(self) -> int:
+        with self.dead_nodes_lock:
+            return len(self.dead_nodes)
+
+    def _dead_nodes_snapshot(self) -> set[int]:
+        with self.dead_nodes_lock:
+            return set(self.dead_nodes)
+
     def setup_logging(self) -> logging.Logger:
+        """Configure JSON logging to stdout (and optionally CloudWatch)."""
         logger = logging.getLogger(f"Node-{self.node_id}")
         logger.setLevel(logging.INFO)
         handler = logging.StreamHandler(sys.stdout)
@@ -110,6 +136,7 @@ class DistributedNode:
         return logger
 
     def log_event(self, event_type: str, message: str, **kwargs: Any) -> None:
+        """Emit a structured log entry and forward to CloudWatch when enabled."""
         log_data: dict[str, Any] = {
             "node_id": self.node_id,
             "timestamp_iso": time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime()),
@@ -126,17 +153,44 @@ class DistributedNode:
                              args=(json_log,), daemon=True).start()
 
     def _send_to_aws(self, json_log: str) -> None:
+        """Push a single log entry to CloudWatch, handling sequence tokens."""
         if not self.cw_client:
             self.logger.warning("CloudWatch client is not initialized.")
 
             return
         try:
-            self.cw_client.put_log_events(
-                logGroupName=CLOUDWATCH_GROUP,
-                logStreamName=f"Node_{self.node_id}",
-                logEvents=[
-                    {'timestamp': int(time.time() * 1000), 'message': json_log}]
-            )
+            log_kwargs: dict[str, Any] = {
+                "logGroupName": CLOUDWATCH_GROUP,
+                "logStreamName": f"Node_{self.node_id}",
+                "logEvents": [
+                    {"timestamp": int(time.time() * 1000), "message": json_log}
+                ]
+            }
+            if self.cw_sequence_token:
+                log_kwargs["sequenceToken"] = self.cw_sequence_token
+            response = self.cw_client.put_log_events(**log_kwargs)
+            self.cw_sequence_token = response.get("nextSequenceToken")
+        except self.cw_client.exceptions.InvalidSequenceTokenException as e:
+            msg = e.response.get("Error", {}).get("Message", "")
+            token = msg.split()[-1] if msg else None
+            if token:
+                self.cw_sequence_token = token
+                try:
+                    response = self.cw_client.put_log_events(
+                        logGroupName=CLOUDWATCH_GROUP,
+                        logStreamName=f"Node_{self.node_id}",
+                        logEvents=[
+                            {"timestamp": int(time.time() * 1000),
+                             "message": json_log}
+                        ],
+                        sequenceToken=self.cw_sequence_token
+                    )
+                    self.cw_sequence_token = response.get("nextSequenceToken")
+                    return
+                except Exception as retry_error:
+                    print(f"CLOUDWATCH ERROR: {retry_error}")
+            else:
+                print(f"CLOUDWATCH ERROR: {e}")
         except Exception as e:
             print(f"CLOUDWATCH ERROR: {e}")
 
@@ -150,13 +204,14 @@ class DistributedNode:
             self.lamport_clock = max(self.lamport_clock, received_time) + 1
 
     def _expected_replies(self) -> int:
-        return max(0, len(self.peers) - 1 - len(self.dead_nodes))
+        return max(0, len(self.peers) - 1 - self._dead_nodes_count())
 
     def _check_replies_completion(self) -> None:
         if len(self.replies_received) >= self._expected_replies():
             self.received_replies_event.set()
 
     def _get_connection(self, target_id: int) -> Optional[socket.socket]:
+        """Open or reuse a TCP connection to a peer."""
         with self.conn_lock:
             if target_id in self.peer_connections:
                 return self.peer_connections[target_id]
@@ -171,10 +226,9 @@ class DistributedNode:
                 s.connect((target_ip, target_port))
                 s.settimeout(None)
                 self.peer_connections[target_id] = s
-                self.dead_nodes.discard(target_id)
+                self._mark_alive(target_id)
                 return s
             except Exception as e:
-                # Logiramo samo ako čvor već nije označen kao mrtav da smanjimo šum
                 if target_id not in self.dead_nodes:
                     self.log_event(
                         "CONNECTION_ERROR", f"Failed to connect to Node {target_id}", error=str(e))
@@ -188,7 +242,7 @@ class DistributedNode:
         if target_id not in self.peers:
             return
 
-        if msg_type == MessageType.HEARTBEAT and target_id in self.dead_nodes:
+        if msg_type == MessageType.HEARTBEAT and self._is_dead(target_id):
             return
 
         msg: Dict[str, Any] = {
@@ -215,8 +269,8 @@ class DistributedNode:
                             pass
                         del self.peer_connections[target_id]
 
-        if target_id not in self.dead_nodes:
-            self.dead_nodes.add(target_id)
+        if not self._is_dead(target_id):
+            self._mark_dead(target_id)
             self.log_event(
                 "NODE_DOWN", f"Failed to send message to {target_id}. Marking as dead.")
             with self.mutex_lock:
@@ -269,7 +323,7 @@ class DistributedNode:
         msg_type: MessageType = MessageType(msg['type'])
         msg_time: int = msg['timestamp']
 
-        self.dead_nodes.discard(sender)
+        self._mark_alive(sender)
         self.update_clock(msg_time)
 
         if msg_type == MessageType.REQUEST:
@@ -286,9 +340,10 @@ class DistributedNode:
             self.handle_heartbeat(sender)
 
     def request_critical_section(self) -> None:
+        """Request entry to the critical section using Ricart-Agrawala."""
         with self.mutex_lock:
             if self.state != NodeState.RELEASED:
-                return  # Već sam unutra ili čekam
+                return
             self.state = NodeState.WANTED
             self.request_clock = self.tick()
             self.replies_received.clear()
@@ -302,21 +357,22 @@ class DistributedNode:
             self.enter_critical_section()
             return
 
+        dead_snapshot = self._dead_nodes_snapshot()
         for peer_id in self.peers:
-            if peer_id != self.node_id and peer_id not in self.dead_nodes:
+            if peer_id != self.node_id and peer_id not in dead_snapshot:
                 self.send_message(peer_id, MessageType.REQUEST)
 
         if self.received_replies_event.wait(timeout=MUTEX_REPLY_TIMEOUT):
             self.enter_critical_section()
             return
 
-        # Timeout handling
         with self.mutex_lock:
+            dead_snapshot = self._dead_nodes_snapshot()
             missing_peers = {pid for pid in self.peers if pid !=
-                             self.node_id and pid not in self.replies_received and pid not in self.dead_nodes}
+                             self.node_id and pid not in self.replies_received and pid not in dead_snapshot}
             if missing_peers:
                 for pid in missing_peers:
-                    self.dead_nodes.add(pid)
+                    self._mark_dead(pid)
                 self._check_replies_completion()
 
         if self.received_replies_event.is_set():
@@ -328,6 +384,7 @@ class DistributedNode:
                 self.state = NodeState.RELEASED
 
     def handle_request(self, sender: int, sender_clock: int) -> None:
+        """Queue or grant a mutex reply based on Lamport ordering."""
         reply: bool = False
         with self.mutex_lock:
             my_priority_higher = (self.state == NodeState.HELD) or \
@@ -349,6 +406,7 @@ class DistributedNode:
             self._check_replies_completion()
 
     def enter_critical_section(self) -> None:
+        """Simulated critical section workload."""
         with self.mutex_lock:
             self.state = NodeState.HELD
 
@@ -365,14 +423,16 @@ class DistributedNode:
             self.deferred_replies.clear()
 
     def start_election(self) -> None:
+        """Run the bully election protocol to select a coordinator."""
         if self.election_in_progress:
             return
         time.sleep(random.uniform(0.1, 0.5))
         self.election_in_progress = True
         self.log_event("ELECTION_START", "Starting Election Process")
 
+        dead_snapshot = self._dead_nodes_snapshot()
         higher_nodes = [pid for pid in self.peers if pid >
-                        self.node_id and pid not in self.dead_nodes]
+                        self.node_id and pid not in dead_snapshot]
 
         if not higher_nodes:
             self.become_coordinator()
@@ -421,8 +481,9 @@ class DistributedNode:
                            f"Accepted Leader {sender} via Heartbeat")
 
     def run_heartbeat_loop(self) -> None:
+        """Monitor and emit coordinator heartbeats with jitter."""
         while self.running:
-            time.sleep(1.0)
+            time.sleep(1.0 + random.uniform(0.0, 0.25))
             if self.coordinator_id == self.node_id:
                 for pid in self.peers:
                     if pid != self.node_id:
@@ -431,19 +492,35 @@ class DistributedNode:
                 if time.time() - self.last_heartbeat_time > (HEARTBEAT_INTERVAL + 4):
                     self.log_event(
                         "LEADER_DEAD", f"Leader {self.coordinator_id} timed out.")
-                    self.dead_nodes.add(self.coordinator_id)
+                    self._mark_dead(self.coordinator_id)
                     self.coordinator_id = None
                     self.start_election()
 
+    def shutdown(self) -> None:
+        """Close sockets and stop background loops."""
+        if not self.running:
+            return
+        self.running = False
+        try:
+            self.server_socket.close()
+        except Exception:
+            pass
+        with self.conn_lock:
+            for sock in self.peer_connections.values():
+                try:
+                    sock.close()
+                except Exception:
+                    pass
+            self.peer_connections.clear()
+        self.log_event("SYSTEM", "Node shutdown complete.")
 
-# --- MAIN ---
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--id", type=int, required=True)
     parser.add_argument("--peers", type=str, default="peers.json")
     args = parser.parse_args()
 
-    # Učitavanje peers.json
     try:
         with open(args.peers, 'r') as f:
             config = json.load(f)
@@ -461,21 +538,26 @@ if __name__ == "__main__":
 
     node = DistributedNode(args.id, peers_map, my_port)
 
-    # Pokretanje pozadinskih servisa
     threading.Thread(target=node.listen, daemon=True).start()
     threading.Thread(target=node.run_heartbeat_loop, daemon=True).start()
 
-    time.sleep(2)  # Stabilizacija
+    time.sleep(2)
 
-    # Automatski izbor vođe na početku
     if node.coordinator_id is None:
         threading.Thread(target=node.start_election, daemon=True).start()
 
     node.log_event("SYSTEM", f"Node {node.node_id} started.")
 
-    # GLAVNA PETLJA
+    def _handle_shutdown(signum: int, frame: Optional[object]) -> None:
+        """Handle SIGINT/SIGTERM with a clean shutdown."""
+        node.log_event("SYSTEM", f"Received signal {signum}, shutting down.")
+        node.shutdown()
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, _handle_shutdown)
+    signal.signal(signal.SIGINT, _handle_shutdown)
+
     try:
-        # Interaktivni mod (lokalno / preko SSH sesije)
         while True:
             cmd = input().strip()
             if cmd == 'req':
@@ -490,5 +572,5 @@ if __name__ == "__main__":
             elif cmd == 'help':
                 print("Commands: req | elect | status | kill/quit/exit | help")
     except KeyboardInterrupt:
-        node.running = False
+        node.shutdown()
         sys.exit(0)
