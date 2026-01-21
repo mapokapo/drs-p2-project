@@ -27,16 +27,12 @@ Ovaj repozitorij sadrži **kompletan distribuirani sustav** implementiran na AWS
 - [x] **IAM** - Least-privilege princip (LabInstanceProfile)
 - [x] **Tagiranje** - `Project=P2` i `Team=T2`
 
----
-
 ## Struktura tima
 
 - **Vedran Marić** - Voditelj projekta, integracija, dokumentacija i priprema demo-a
 - **Anđela Marinović** - Komunikacija i infrastruktura (AWS/Terraform, bootstrap)
 - **Leo Petrović** - Logičko vrijeme i međusobno isključivanje (Lamport sat, Ricart-Agrawala)
 - **Nikola Pehar** - Izbor vođe i mjerenja (Bully algoritam, eksperimenti, analiza)
-
----
 
 ## Struktura projekta
 
@@ -64,8 +60,6 @@ Ovaj repozitorij sadrži **kompletan distribuirani sustav** implementiran na AWS
 └── README.md                # Ovaj dokument
 
 ```
-
----
 
 ## Arhitektura sustava
 
@@ -111,8 +105,6 @@ Sustav se sastoji od **5 EC2 instanci** (t3.micro, Ubuntu 24.04) unutar default 
 - `ELECTION` poruke šalju se višim ID-ovima
 - Ako nema `ANSWER`, čvor postaje koordinator i šalje `COORDINATOR` poruke
 
----
-
 ## Upute za pokretanje
 
 ### Preduvjeti
@@ -120,21 +112,6 @@ Sustav se sastoji od **5 EC2 instanci** (t3.micro, Ubuntu 24.04) unutar default 
 1. **AWS Academy Learner Lab** - Pristup aktivnom Lab okruženju
 2. **Terraform** - Instaliran lokalno ([download](https://www.terraform.io/downloads))
 3. **SSH ključ** - `labsuser.pem` kopiran u `~/.ssh/` s pravima `chmod 400`
-4. **AWS kredencijali** - Preuzeti iz AWS Academy _AWS Details_ panela
-
-### Konfiguracija AWS kredencijala
-
-Iz AWS Academy Learner Lab sučelja:
-
-1. Kliknite **AWS Details** → **Show** (desno od _AWS CLI_)
-2. Kopirajte kredencijale u `~/.aws/credentials`:
-
-```ini
-[default]
-aws_access_key_id = <VAŠ_ACCESS_KEY>
-aws_secret_access_key = <VAŠ_SECRET_KEY>
-aws_session_token = <VAŠ_SESSION_TOKEN>
-```
 
 ### 1. Pokretanje infrastrukture (Deploy)
 
@@ -172,64 +149,7 @@ ssh_quickstart = "ssh -i ~/.ssh/labsuser.pem ubuntu@54.123.45.67"
 2. Odaberite grupu: `/Distributed_System_Logs`
 3. Odaberite stream po čvoru: `Node_1`, `Node_2`, ..., `Node_5`
 
-#### Što tražiti u logovima:
-
-| Tip događaja     | Opis                        | Primjer                                |
-| ---------------- | --------------------------- | -------------------------------------- |
-| `CLOCK_UPDATE`   | Lamport sat se ažurira      | `"clock": 42, "received_time": 41`     |
-| `SEND_MESSAGE`   | Slanje poruke               | `"type": "REQUEST", "target": 3`       |
-| `ENTER_CS`       | Ulazak u kritičnu sekciju   | `"state": "HELD", "request_clock": 15` |
-| `EXIT_CS`        | Izlazak iz kritične sekcije | `"deferred_replies": [2, 4]`           |
-| `LEADER_UPDATE`  | Nova vođa                   | `"coordinator_id": 5`                  |
-| `NODE_DOWN`      | Detektirani kvar            | `"target": 3, "reason": "timeout"`     |
-| `ELECTION_START` | Početak izbora vođe         | `"reason": "heartbeat_timeout"`        |
-
-#### CloudWatch Insights primjeri:
-
-**Broj zahtjeva za mutex po čvoru:**
-
-```
-fields @timestamp, node_id, event_type
-| filter event_type = "ENTER_CS"
-| stats count() by node_id
-```
-
-**Vrijeme u kritičnoj sekciji:**
-
-```
-fields @timestamp, node_id
-| filter event_type = "ENTER_CS" or event_type = "EXIT_CS"
-| sort @timestamp asc
-```
-
-### 3. Demo scenariji i testiranje
-
-#### Scenario 1: Paralelni zahtjevi za kritičnu sekciju
-
-Čvorovi automatski generiraju zahtjeve. Provjerite u CloudWatch logovima da **nikad dva čvora istovremeno nisu u kritičnoj sekciji**.
-
-#### Scenario 2: Simulacija kvara vođe
-
-1. Spojite se na instancu trenutnog koordinatora:
-
-   ```bash
-   ssh -i ~/.ssh/labsuser.pem ubuntu@<KOORDINATOR_IP>
-   ```
-
-2. Pronađite proces i ubijte ga:
-
-   ```bash
-   ps aux | grep node.py
-   sudo kill <PID>
-   ```
-
-3. U CloudWatch logovima ostalih čvorova pratite:
-   - Prestanak `HEARTBEAT` poruka
-   - `ELECTION_START` događaj nakon timeoutа (5s)
-   - `ELECTION` i `ANSWER` poruke
-   - `LEADER_UPDATE` s novim `coordinator_id`
-
-#### Scenario 3: Korištenje admin skripte
+#### Korištenje admin skripte
 
 Za slanje komandi na čvorove bez SSH-a:
 
@@ -240,7 +160,7 @@ cd scripts
 ./admin_script.sh 3 status  # Prikaži status Node 3
 ```
 
-### 4. Mjerenja performansi
+### 3. Mjerenja performansi
 
 #### Automatski benchmark
 
@@ -260,53 +180,10 @@ python3 benchmark.py 10       # 10 zahtjeva po konfiguraciji
 4. Analizira logove
 5. Generira izvještaje
 
-**Izlazni fajlovi:**
+**Izlazne datoteke:**
 
 - `benchmark_results.json` - Sirovi podaci u JSON formatu
 - `benchmark_report.md` - Markdown izvještaj s tablicama i analizom
-
-**Primjer izlaza:**
-
-```
-==========================================================================================
-FINAL RESULTS TABLE
-==========================================================================================
-Config                Nodes   CS Entries   REQ Msgs   REPLY Msgs   Avg Wait   Max Wait
-------------------------------------------------------------------------------------------
-3-node cluster            3            5         10           10      0.500s      0.600s
-5-node cluster            5            5         20           20      1.000s      1.200s
-7-node cluster            7            5         30           30      1.400s      1.600s
-------------------------------------------------------------------------------------------
-
-Message complexity analysis (Ricart-Agrawala: 2(N-1) messages per CS request):
-  3 nodes: Expected 4 msgs/request
-  5 nodes: Expected 8 msgs/request
-  7 nodes: Expected 12 msgs/request
-==========================================================================================
-```
-
-#### Ručna analiza (CloudWatch)
-
-Čvorovi logiraju:
-
-- **Broj poruka** - `SEND_MESSAGE` događaji s brojem poslatih poruka
-- **Vrijeme čekanja** - Razlika između `REQUEST` i `ENTER_CS` timestampova
-
-**Konfigurirane konfiguracije za testiranje:**
-
-1. Normalan rad (5 čvorova)
-2. Kvar vođe (4 aktivna čvora)
-3. Visoka konkurencija (učestali mutex zahtjevi)
-
-**Analiza u CloudWatch Insights:**
-
-```
-fields @timestamp, node_id, event_type, details.wait_time_ms
-| filter event_type = "MUTEX_STATS"
-| stats avg(details.wait_time_ms) as avg_wait, max(details.wait_time_ms) as max_wait by node_id
-```
-
----
 
 ## Lokalno pokretanje (Development)
 
@@ -336,21 +213,16 @@ Datoteka `src/peers.json` već sadrži lokalnu konfiguraciju:
 
 ### 3. Pokretanje čvorova
 
-U **5 zasebnih terminala**:
+Morate imati `tmux` instaliran.
+
+Pokrenite sljedeću skriptu:
 
 ```bash
-# Terminal 1
-cd src
-python3 node.py --id 1 --peers peers.json
-
-# Terminal 2
-cd src
-python3 node.py --id 2 --peers peers.json
-
-# ... i tako dalje do Node 5
+cd scripts
+./local_demo.sh
 ```
 
-**Napomena:** U lokalnom načinu rada `USE_CLOUDWATCH` je automatski `False` i logovi se ispisuju na stdout u JSON formatu.
+Ova skripta pokreće 5 čvorova u odvojenim tmux prozorima s `USE_CLOUDWATCH=False`.
 
 ### 4. Interakcija
 
@@ -360,8 +232,6 @@ U terminalima čvorova možete upisivati komande:
 - `elect` - Pokreni izbor vođe
 - `status` - Prikaži trenutno stanje čvora
 - `quit` - Zaustavi čvor
-
----
 
 ## Čišćenje infrastrukture (Cleanup)
 
@@ -381,8 +251,6 @@ terraform destroy -auto-approve
 **Dodatno ručno brisanje (opcionalno):**
 
 - CloudWatch Log Group `/Distributed_System_Logs` (AWS Console → CloudWatch → Log groups)
-
----
 
 ## Sigurnost i najbolje prakse
 
@@ -406,57 +274,6 @@ terraform destroy -auto-approve
 - [x] **Automatizacija** - Potpuno automatski deploy od nule do pokretanja
 - [x] **Dokumentacija** - Jasne upute za setup, test i teardown
 - [x] **Git** - Verzioniranje koda i infrastrukture
-
----
-
-## Dodatne informacije
-
-### Struktura poruka (JSON)
-
-```json
-{
-  "sender": 3,
-  "type": "REQUEST",
-  "timestamp": 42,
-  "request_clock": 42
-}
-```
-
-### Lamport Clock pravila
-
-```python
-# Slanje poruke
-def tick():
-    clock += 1
-    return clock
-
-# Primanje poruke
-def update_clock(received_time):
-    clock = max(clock, received_time) + 1
-```
-
-### Ricart-Agrawala Mutex algoritam
-
-```
-1. Čvor prelazi u WANTED i šalje REQUEST(clock) svim peerima
-2. Peer odgovara REPLY odmah AKO:
-   - Je u RELEASED stanju, ILI
-   - Je u WANTED ali ima veći (clock, node_id) par
-3. Čvor ulazi u HELD kad skupi sve REPLY odgovore
-4. Pri izlasku šalje REPLY svim odgođenim requestovima
-```
-
-### Bully Election algoritam
-
-```
-1. Heartbeat prestane → election_timeout (5s) istekne
-2. Čvor šalje ELECTION višim ID-ovima
-3. AKO dobije ANSWER → čeka COORDINATOR
-4. AKO ne dobije ANSWER → proglašava se koordinatorom
-5. Novi koordinator šalje COORDINATOR svima
-```
-
----
 
 ## Licenca i autori
 
