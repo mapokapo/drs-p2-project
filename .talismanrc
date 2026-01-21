@@ -3,6 +3,8 @@ fileignoreconfig:
   checksum: 6f49eb89c65fa6211a0a60dac8ce2708c92d7154ba7c4a93e00e1bc2a8568281
 - filename: admin_script.sh
   checksum: eb445b0761510d45d666be09e19b2ebf566ed60301dcbd3f103ad99b2e9ac73d
+- filename: benchmark/benchmark.py
+  checksum: de3e6398b8e9b645a70c06d9f6bdfa3ce6abaa251640a636810ebd9b4fa33ada
 - filename: main.tf
   checksum: 8199b11a3297b8f87165c2654d6f87c4fa329c61c0c3b7722d25cb67094ed1b9
 - filename: uv.lock

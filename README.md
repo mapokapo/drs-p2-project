@@ -47,16 +47,22 @@ Ovaj repozitorij sadrži **kompletan distribuirani sustav** implementiran na AWS
 │   ├── peers.json           # Konfiguracija peer mreže (generira Terraform za AWS)
 │   ├── pyproject.toml       # Python dependencies (uv format)
 │   └── uv.lock              # Locked dependencies
+├── benchmark/               # Mjerenje performansi
+│   ├── benchmark.py         # Skripta za automatsko mjerenje performansi
+│   ├── peers_3nodes.json    # 3-node konfiguracija za benchmark
+│   ├── peers_5nodes.json    # 5-node konfiguracija za benchmark
+│   └── peers_7nodes.json    # 7-node konfiguracija za benchmark
 ├── terraform/               # AWS infrastruktura (IaC)
 │   ├── main.tf              # Terraform konfiguracija (VPC, EC2, IAM, deploy)
 │   └── user_data.sh.tpl     # Bootstrap skripta za EC2 instance
 ├── scripts/                 # Admin i deploy skripte
 │   ├── admin_script.sh      # Slanje komandi na remote čvorove via tmux
 │   └── deploy.sh            # Deploy i pokretanje čvora (poziva Terraform)
-├── README.md                # Ovaj dokument
-├── task.md                  # Originalni projektni zadatak
-└── docs/
-    └── architecture.md      # Arhitekturni dijagram (Mermaid format)
+├── docs/
+│   └── architecture.md      # Arhitekturni dijagram (Mermaid format)
+├── .gitignore               # Git ignore pravila
+└── README.md                # Ovaj dokument
+
 ```
 
 ---
@@ -235,6 +241,51 @@ cd scripts
 ```
 
 ### 4. Mjerenja performansi
+
+#### Automatski benchmark
+
+Za automatsko mjerenje performansi preko 3 konfiguracije (3, 5 i 7 čvorova):
+
+```bash
+cd benchmark
+python3 benchmark.py          # 5 zahtjeva po konfiguraciji (default)
+python3 benchmark.py 10       # 10 zahtjeva po konfiguraciji
+```
+
+**Skripta automatski:**
+
+1. Pokreće čvorove za svaku konfiguraciju
+2. Triggerira izbor vođe
+3. Šalje mutex zahtjeve
+4. Analizira logove
+5. Generira izvještaje
+
+**Izlazni fajlovi:**
+
+- `benchmark_results.json` - Sirovi podaci u JSON formatu
+- `benchmark_report.md` - Markdown izvještaj s tablicama i analizom
+
+**Primjer izlaza:**
+
+```
+==========================================================================================
+FINAL RESULTS TABLE
+==========================================================================================
+Config                Nodes   CS Entries   REQ Msgs   REPLY Msgs   Avg Wait   Max Wait
+------------------------------------------------------------------------------------------
+3-node cluster            3            5         10           10      0.500s      0.600s
+5-node cluster            5            5         20           20      1.000s      1.200s
+7-node cluster            7            5         30           30      1.400s      1.600s
+------------------------------------------------------------------------------------------
+
+Message complexity analysis (Ricart-Agrawala: 2(N-1) messages per CS request):
+  3 nodes: Expected 4 msgs/request
+  5 nodes: Expected 8 msgs/request
+  7 nodes: Expected 12 msgs/request
+==========================================================================================
+```
+
+#### Ručna analiza (CloudWatch)
 
 Čvorovi logiraju:
 
