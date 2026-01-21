@@ -13,13 +13,15 @@ COMMAND="$2"
 KEY_PATH="${SSH_KEY_PATH:-$HOME/.ssh/labsuser.pem}"
 SSH_USER="${SSH_USER:-ubuntu}"
 TMUX_SESSION="${TMUX_SESSION:-node}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TERRAFORM_DIR="$SCRIPT_DIR/../terraform"
 
 if ! command -v terraform >/dev/null 2>&1; then
   echo "terraform is required on PATH."
   exit 1
 fi
 
-NODE_IP=$(terraform output -json node_ips | python3 - "$NODE_ID" <<'PY'
+NODE_IP=$(cd "$TERRAFORM_DIR" && terraform output -json node_ips | python3 - "$NODE_ID" <<'PY'
 import json
 import sys
 
