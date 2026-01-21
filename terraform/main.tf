@@ -53,7 +53,10 @@ data "aws_subnets" "default" {
     name   = "vpc-id"
     values = [data.aws_vpc.default.id]
   }
-  # Removed availability-zone filter to let AWS pick any available subnet in the VPC
+  filter {
+    name   = "availability-zone"
+    values = ["us-east-1a"]
+  }
 }
 
 resource "aws_security_group" "dist_sys_sg" {
