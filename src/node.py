@@ -128,6 +128,7 @@ class DistributedNode:
         self.peer_connections: Dict[int, socket.socket] = {}
         self.conn_lock: threading.Lock = threading.Lock()
         self.dead_nodes: ThreadSafeSet = ThreadSafeSet()
+        self.shared_counter: int = 0
 
         self.server_socket: socket.socket = socket.socket(
             socket.AF_INET, socket.SOCK_STREAM
@@ -373,6 +374,22 @@ class DistributedNode:
         """Simulated critical section workload."""
         with self.mutex_lock:
             self.state = NodeState.HELD
+
+        before_value = self.shared_counter
+        self.cw_logger.log_event(
+            "CS_RESOURCE",
+            "Shared counter before increment",
+            self.lamport_clock,
+            counter=before_value,
+        )
+        self.shared_counter = before_value + 1
+        after_value = self.shared_counter
+        self.cw_logger.log_event(
+            "CS_RESOURCE",
+            "Shared counter after increment",
+            self.lamport_clock,
+            counter=after_value,
+        )
 
         self.cw_logger.log_event(
             "CS_ENTER", ">>> ENTERING CRITICAL SECTION <<<", self.lamport_clock
