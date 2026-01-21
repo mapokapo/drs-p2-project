@@ -21,18 +21,29 @@ if ! command -v terraform >/dev/null 2>&1; then
   exit 1
 fi
 
-NODE_IP=$(cd "$TERRAFORM_DIR" && terraform output -json node_ips | python3 - "$NODE_ID" <<'PY'
+TF_OUTPUT=$(cd "$TERRAFORM_DIR" && terraform output -json node_ips)
+
+if [[ -z "$TF_OUTPUT" ]]; then
+  echo "Error: Failed to get terraform output."
+  exit 1
+fi
+
+NODE_IP=$(echo "$TF_OUTPUT" | python3 - "$NODE_ID" <<'PY'
 import json
 import sys
 
 node_id = sys.argv[1]
-data = json.load(sys.stdin)
-key = f"Node {node_id}"
-ip = data.get(key)
-if not ip:
-    sys.stderr.write(f"Node {node_id} not found in terraform output.\n")
-    sys.exit(2)
-print(ip)
+try:
+    data = json.load(sys.stdin)
+    key = f"Node {node_id}"
+    ip = data.get(key)
+    if not ip:
+        sys.stderr.write(f"Node {node_id} not found in terraform output.\n")
+        sys.exit(2)
+    print(ip)
+except Exception as e:
+    sys.stderr.write(f"Error parsing JSON: {e}\n")
+    sys.exit(1)
 PY
 )
 
