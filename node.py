@@ -124,6 +124,8 @@ class DistributedNode:
 
     def _send_to_aws(self, json_log: str) -> None:
         if not self.cw_client:
+            self.logger.warning("CloudWatch client is not initialized.")
+
             return
         try:
             self.cw_client.put_log_events(
@@ -131,8 +133,8 @@ class DistributedNode:
                 logStreamName=f"Node_{self.node_id}",
                 logEvents=[{'timestamp': int(time.time() * 1000), 'message': json_log}]
             )
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"CLOUDWATCH ERROR: {e}")
 
     def tick(self) -> int:
         with self.clock_lock:
