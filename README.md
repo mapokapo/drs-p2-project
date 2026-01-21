@@ -29,7 +29,7 @@ Ovaj repozitorij sadrži **kompletan distribuirani sustav** implementiran na AWS
 
 ---
 
-## 👥 Struktura tima
+## Struktura tima
 
 - **Vedran Marić** - Voditelj projekta, integracija, dokumentacija i priprema demo-a
 - **Anđela Marinović** - Komunikacija i infrastruktura (AWS/Terraform, bootstrap)
@@ -308,7 +308,7 @@ fields @timestamp, node_id, event_type, details.wait_time_ms
 
 ---
 
-## 💻 Lokalno pokretanje (Development)
+## Lokalno pokretanje (Development)
 
 Za razvoj i testiranje bez AWS infrastrukture:
 
@@ -363,7 +363,7 @@ U terminalima čvorova možete upisivati komande:
 
 ---
 
-## 🧹 Čišćenje infrastrukture (Cleanup)
+## Čišćenje infrastrukture (Cleanup)
 
 **VAŽNO:** Nakon završetka testiranja obavezno uklonite sve AWS resurse da ne trošite kredit!
 
