@@ -1,4 +1,6 @@
 fileignoreconfig:
+- filename: main.tf
+  checksum: 8199b11a3297b8f87165c2654d6f87c4fa329c61c0c3b7722d25cb67094ed1b9
 - filename: uv.lock
   checksum: abe4f4ddd509c61cf5057dbd84c2c18c4c90ee8741a6dff59396e9b7d6d66957
 version: "1.0"
