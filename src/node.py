@@ -395,7 +395,12 @@ class DistributedNode:
         self.cw_logger.log_event(
             "CS_ENTER", ">>> ENTERING CRITICAL SECTION <<<", self.lamport_clock
         )
-        time.sleep(random.uniform(0.5, 1.5))
+        
+        print(f"Node {self.node_id} working in critical section...")
+        for i in range(3):
+             time.sleep(1.0)
+             print(f"Node {self.node_id} performing exclusive task {i+1}/3...")
+
         self.cw_logger.log_event(
             "CS_EXIT", "<<< EXITING CRITICAL SECTION >>>", self.lamport_clock
         )
@@ -417,7 +422,7 @@ class DistributedNode:
         self.election_state.in_progress = True
         self.election_state.received_answer = False
         self.cw_logger.log_event(
-            "ELECTION_START", "Starting Election Process", self.lamport_clock
+            "ELECTION_START", "Starting Election Process", self.tick()
         )
 
         dead_snapshot = self.dead_nodes.snapshot()
@@ -451,6 +456,10 @@ class DistributedNode:
             self.become_coordinator()
 
     def handle_election(self, sender: int, _msg_time: Optional[int] = None) -> None:
+        if self.election_state.coordinator_id == self.node_id:
+            self.send_message(sender, MessageType.COORDINATOR)
+            return
+
         self.send_message(sender, MessageType.ANSWER)
         if not self.election_state.in_progress:
             self.start_election()
@@ -474,7 +483,7 @@ class DistributedNode:
         self.election_state.coordinator_id = self.node_id
         self.election_state.in_progress = False
         self.cw_logger.log_event(
-            "LEADER_SELF", "!!! I am the Coordinator !!!", self.lamport_clock
+            "LEADER_SELF", "!!! I am the Coordinator !!!", self.tick()
         )
         for pid in self.peers:
             if pid != self.node_id:
@@ -607,13 +616,13 @@ if __name__ == "__main__":
     threading.Thread(target=node.listen, daemon=True).start()
     threading.Thread(target=node.run_heartbeat_loop, daemon=True).start()
 
+    node.cw_logger.log_event(
+        "SYSTEM", f"Node {node.node_id} started.", node.tick()
+    )
+
     time.sleep(2)
 
     if node.election_state.coordinator_id is None:
         threading.Thread(target=node.start_election, daemon=True).start()
-
-    node.cw_logger.log_event(
-        "SYSTEM", f"Node {node.node_id} started.", node.lamport_clock
-    )
 
     run_repl(node)
