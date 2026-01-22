@@ -479,7 +479,7 @@ class Benchmark:
 def main() -> None:
     """Run the benchmark suite."""
     benchmark_dir = Path(__file__).parent
-    src_dir = benchmark_dir.parent / "src"
+    src_dir = benchmark_dir.parent
 
     # Check if node.py exists
     if not (src_dir / "node.py").exists():

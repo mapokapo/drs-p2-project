@@ -38,16 +38,16 @@ Ovaj repozitorij sadrži **kompletan distribuirani sustav** implementiran na AWS
 
 ```
 ├── src/                      # Python kod čvorova
+│   ├── benchmark             # Benchmarking skripte i konfiguracije
+│   │   ├── benchmark.py      # Glavna benchmark skripta
+│   │   ├── peers_3nodes.json # Peer konfiguracija za 3 čvora
+│   │   ├── peers_5nodes.json # Peer konfiguracija za 5 čvorova
+│   │   └── peers_7nodes.json # Peer konfiguracija za 7 čvorova
 │   ├── node.py              # Glavna implementacija (Lamport, Ricart-Agrawala, Bully)
 │   ├── cloudwatch_logger.py # CloudWatch logging integracija
 │   ├── peers.json           # Konfiguracija peer mreže (generira Terraform za AWS)
 │   ├── pyproject.toml       # Python dependencies (uv format)
 │   └── uv.lock              # Locked dependencies
-├── benchmark/               # Mjerenje performansi
-│   ├── benchmark.py         # Skripta za automatsko mjerenje performansi
-│   ├── peers_3nodes.json    # 3-node konfiguracija za benchmark
-│   ├── peers_5nodes.json    # 5-node konfiguracija za benchmark
-│   └── peers_7nodes.json    # 7-node konfiguracija za benchmark
 ├── terraform/               # AWS infrastruktura (IaC)
 │   ├── main.tf              # Terraform konfiguracija (VPC, EC2, IAM, deploy)
 │   └── user_data.sh.tpl     # Bootstrap skripta za EC2 instance

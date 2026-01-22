@@ -596,7 +596,7 @@ def run_repl(node: "DistributedNode") -> None:
                 node.start_election()
             elif cmd == "status":
                 print(
-                    f"Leader: {node.election_state.coordinator_id}, State: {node.state}"
+                    f"Leader: {node.election_state.coordinator_id}, State: {node.state}, Clock: {node.lamport_clock}"
                 )
             elif cmd in {"quit", "kill", "exit"}:
                 raise KeyboardInterrupt
